@@ -80,7 +80,7 @@ Gem::Specification.new do |spec|
   spec.description   = %[Copy]
   spec.email         = ["civitaspo@gmail.com"]
   spec.licenses      = ["MIT"]
-  # TODO set this: spec.homepage      = "https://github.com/civitaspo/embulk-filter-copy"
+  spec.homepage      = "https://github.com/civitaspo/embulk-filter-copy"
 
   spec.files         = `git ls-files`.split("\n") + Dir["classpath/*.jar"]
   spec.test_files    = spec.files.grep(%r"^(test|spec)/")
