@@ -1,0 +1,19 @@
+in:
+  type: file
+  path_prefix: ./example/data.tsv
+  parser:
+    type: csv
+    delimiter: "\t"
+    skip_header_lines: 0
+    columns:
+      - { name: id, type: long }
+      - { name: description, type: string }
+      - { name: name, type: string }
+    stop_on_invalid_record: true
+filters:
+  - type: copy
+    config:
+      out:
+        type: stdout
+out:
+  type: 'null'
