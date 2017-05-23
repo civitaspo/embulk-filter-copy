@@ -9,8 +9,7 @@ import org.embulk.config.Task;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
 import org.embulk.plugin.common.DefaultColumnVisitor;
-import org.embulk.queue.PageQueueSocketServer;
-import org.embulk.queue.ServerTask;
+import org.embulk.service.PageQueueService;
 import org.embulk.spi.BufferAllocator;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
@@ -28,22 +27,6 @@ import java.util.List;
 public class PageInputPlugin
         implements InputPlugin
 {
-    public interface PluginTask
-            extends Task
-    {
-        @Config("queue_server")
-        ServerTask getQueueServer();
-
-        @Config("life_cycle_server")
-        ServerTask getLifeCycleServer();
-
-        @Config("columns")
-        SchemaConfig getColumns();
-
-        @ConfigInject
-        BufferAllocator getBufferAllocator();
-    }
-
     private final static Logger logger = Exec.getLogger(PageInputPlugin.class);
 
     @Override
@@ -84,21 +67,14 @@ public class PageInputPlugin
         PageReader pageReader = new PageReader(schema);
         ColumnVisitor visitor = new DefaultColumnVisitor(pageReader, pageBuilder);
 
-        PageQueueSocketServer queueServer = new PageQueueSocketServer(
-                task.getQueueServer().getHost(),
-                task.getQueueServer().getPort());
-        queueServer.start();
-
         try {
             logger.info("embulk-input-page: start dequeue");
             // lifecycle がいる！！
-            int num = 0;
-            while (num <= 3) {
-                num++;
+            while (!PageQueueService.isTaskQueueClosed(task.getQueueName())) {
                 logger.info("embulk-input-page: server is running");
 
                 logger.info("try to dequeue");
-                Optional<Page> page = queueServer.dequeuePage();
+                Optional<Page> page = PageQueueService.dequeue(task.getQueueName());
 
                 if (page.isPresent()) {
                     logger.info("embulk-input-page: get page");
@@ -121,7 +97,6 @@ public class PageInputPlugin
         }
         finally {
             pageBuilder.finish();
-            queueServer.stop();
         }
 
         return Exec.newTaskReport(); // TODO
@@ -131,5 +106,18 @@ public class PageInputPlugin
     public ConfigDiff guess(ConfigSource config)
     {
         return Exec.newConfigDiff();
+    }
+
+    public interface PluginTask
+            extends Task
+    {
+        @Config("queue_name")
+        String getQueueName();
+
+        @Config("columns")
+        SchemaConfig getColumns();
+
+        @ConfigInject
+        BufferAllocator getBufferAllocator();
     }
 }
