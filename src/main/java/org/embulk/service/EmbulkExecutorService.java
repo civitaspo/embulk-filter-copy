@@ -33,26 +33,25 @@ public class EmbulkExecutorService
 {
     private final static Logger logger = Exec.getLogger(EmbulkExecutorService.class);
     private final EmbulkEmbed embed;
-    private final ExecSession session;
     private final ListeningExecutorService es;
     private final List<Future> q = Lists.newArrayList();
 
-    public EmbulkExecutorService(int numThreads, Injector injector, ExecSession session)
+    public EmbulkExecutorService(int numThreads, Injector injector)
     {
         this.embed = newEmbulkEmbed(injector);
-        this.session = session;
         this.es = MoreExecutors.listeningDecorator(newThreadPool(numThreads));
     }
 
     public void executeAsync(final ConfigSource config)
     {
+        logger.info("execute with this config: {}", config);
         ListenableFuture<ExecutionResult> future = es.submit(new Callable<ExecutionResult>()
         {
             @Override
             public ExecutionResult call()
                     throws Exception
             {
-                return run(config);
+                return embed.run(config);
             }
         });
         Futures.addCallback(future, new FutureCallback<ExecutionResult>() {
@@ -86,7 +85,7 @@ public class EmbulkExecutorService
     public void waitExecutionFinished()
     {
         while (!areAllExecutionsFinished()) {
-            logger.info("exec");
+            logger.info("all exec are not finished yet.");
             try {
                 Thread.sleep(5000L); // 5 seconds
             }
@@ -126,39 +125,6 @@ public class EmbulkExecutorService
         }
         catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
             throw new ConfigException(e);
-        }
-    }
-
-    private ExecutionResult run(ConfigSource config)
-            throws NoSuchFieldException, IllegalAccessException
-    {
-        Field field = embed.getClass().getDeclaredField("bulkLoader");
-        if (!field.isAccessible()) {
-            field.setAccessible(true);
-        }
-
-        BulkLoader bulkLoader = (BulkLoader) field.get(embed);
-
-        try {
-            return bulkLoader.run(session, config);
-        }
-        catch (PartialExecutionException partial) {
-            try {
-                bulkLoader.cleanup(config, partial.getResumeState());
-            } catch (Throwable ex) {
-                partial.addSuppressed(ex);
-            }
-            throw partial;
-        }
-        finally {
-            try {
-                session.cleanup();
-            }
-            catch (Exception ex) {
-                // TODO add this exception to ExecutionResult.getIgnoredExceptions
-                // or partial.addSuppressed
-                ex.printStackTrace(System.err);
-            }
         }
     }
 }

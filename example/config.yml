@@ -17,3 +17,4 @@ filters:
         type: stdout
 out:
   type: 'null'
+  # type: stdout

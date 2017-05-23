@@ -1,20 +1,17 @@
 package org.embulk.input.page;
 
-import java.util.List;
-
 import com.google.common.base.Optional;
-
 import org.embulk.config.Config;
-import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigDiff;
 import org.embulk.config.ConfigInject;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
-import org.embulk.service.PageQueueService;
+import org.embulk.plugin.common.DefaultColumnVisitor;
+import org.embulk.queue.PageQueueSocketServer;
+import org.embulk.queue.ServerTask;
 import org.embulk.spi.BufferAllocator;
-import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.InputPlugin;
@@ -26,12 +23,20 @@ import org.embulk.spi.Schema;
 import org.embulk.spi.SchemaConfig;
 import org.slf4j.Logger;
 
+import java.util.List;
+
 public class PageInputPlugin
         implements InputPlugin
 {
     public interface PluginTask
             extends Task
     {
+        @Config("queue_server")
+        ServerTask getQueueServer();
+
+        @Config("life_cycle_server")
+        ServerTask getLifeCycleServer();
+
         @Config("columns")
         SchemaConfig getColumns();
 
@@ -74,99 +79,49 @@ public class PageInputPlugin
             Schema schema, int taskIndex,
             PageOutput output)
     {
-        // イテレートして待ち受けて hasNext が false になったら処理終了する
         PluginTask task = taskSource.loadTask(PluginTask.class);
+        PageBuilder pageBuilder = new PageBuilder(task.getBufferAllocator(), schema, output);
+        PageReader pageReader = new PageReader(schema);
+        ColumnVisitor visitor = new DefaultColumnVisitor(pageReader, pageBuilder);
 
-        try (
-                final PageBuilder pageBuilder = new PageBuilder(task.getBufferAllocator(), schema, output);
-                final PageReader pageReader = new PageReader(schema)
-        ) {
-            ColumnVisitor visitor = new ColumnVisitor()
-            {
-                @Override
-                public void booleanColumn(Column column)
-                {
-                    if (pageReader.isNull(column)) {
-                        pageBuilder.setNull(column);
-                        return;
-                    }
-                    pageBuilder.setBoolean(column, pageReader.getBoolean(column));
-                }
+        PageQueueSocketServer queueServer = new PageQueueSocketServer(
+                task.getQueueServer().getHost(),
+                task.getQueueServer().getPort());
+        queueServer.start();
 
-                @Override
-                public void longColumn(Column column)
-                {
-                    if (pageReader.isNull(column)) {
-                        pageBuilder.setNull(column);
-                        return;
-                    }
-                    pageBuilder.setLong(column, pageReader.getLong(column));
-                }
-
-                @Override
-                public void doubleColumn(Column column)
-                {
-                    if (pageReader.isNull(column)) {
-                        pageBuilder.setNull(column);
-                        return;
-                    }
-                    pageBuilder.setDouble(column, pageReader.getDouble(column));
-
-                }
-
-                @Override
-                public void stringColumn(Column column)
-                {
-                    if (pageReader.isNull(column)) {
-                        pageBuilder.setNull(column);
-                        return;
-                    }
-                    pageBuilder.setString(column, pageReader.getString(column));
-                }
-
-                @Override
-                public void timestampColumn(Column column)
-                {
-                    if (pageReader.isNull(column)) {
-                        pageBuilder.setNull(column);
-                        return;
-                    }
-                    pageBuilder.setTimestamp(column, pageReader.getTimestamp(column));
-                }
-
-                @Override
-                public void jsonColumn(Column column)
-                {
-                    if (pageReader.isNull(column)) {
-                        pageBuilder.setNull(column);
-                        return;
-                    }
-                    pageBuilder.setJson(column, pageReader.getJson(column));
-                }
-            };
-
-
+        try {
             logger.info("embulk-input-page: start dequeue");
-            while (!PageQueueService.isClosed()) {
-                logger.info("embulk-input-page: queue is not closed");
-                Optional<Page> page;
-                try {
-                    logger.info("try to dequeue");
-                    page = PageQueueService.dequeue();
-                }
-                catch (InterruptedException e) {
-                    logger.warn("dequeue failed", e);
-                    continue;
-                }
+            // lifecycle がいる！！
+            int num = 0;
+            while (num <= 3) {
+                num++;
+                logger.info("embulk-input-page: server is running");
+
+                logger.info("try to dequeue");
+                Optional<Page> page = queueServer.dequeuePage();
+
                 if (page.isPresent()) {
                     logger.info("embulk-input-page: get page");
                     pageReader.setPage(page.get());
                     while (pageReader.nextRecord()) {
+                        logger.info("embulk-input-page: add record!!!!");
                         pageReader.getSchema().visitColumns(visitor);
                         pageBuilder.addRecord();
                     }
                 }
+                else {
+                    try {
+                        Thread.sleep(5 * 1000);
+                    }
+                    catch (InterruptedException e) {
+                        logger.warn(e.getMessage(), e);
+                    }
+                }
             }
+        }
+        finally {
+            pageBuilder.finish();
+            queueServer.stop();
         }
 
         return Exec.newTaskReport(); // TODO
