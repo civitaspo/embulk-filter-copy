@@ -124,5 +124,6 @@ protobuf {
             grpc {}
         }
     }
+    // Use `src` dir, because we can recognize generated class by the package name.
     generatedFilesBaseDir = "$projectDir/src"
 }
