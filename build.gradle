@@ -1,9 +1,21 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.1'
+    }
+}
+
 plugins {
     id "com.jfrog.bintray" version "1.1"
     id "com.github.jruby-gradle.base" version "0.1.5"
     id "java"
     id "checkstyle"
+
+    id "com.google.protobuf" version "0.8.1"
 }
+
 import com.github.jrubygradle.JRubyExec
 repositories {
     mavenCentral()
@@ -21,7 +33,9 @@ targetCompatibility = 1.7
 dependencies {
     compile  "org.embulk:embulk-core:0.8.21"
     provided "org.embulk:embulk-core:0.8.21"
-    // compile "YOUR_JAR_DEPENDENCY_GROUP:YOUR_JAR_DEPENDENCY_MODULE:YOUR_JAR_DEPENDENCY_VERSION"
+    compile 'com.google.protobuf:protobuf-java:3.3.0'
+    compile 'io.grpc:grpc-stub:1.3.0'
+    compile 'io.grpc:grpc-protobuf:1.3.0'
     testCompile "junit:junit:4.+"
 }
 
@@ -94,3 +108,21 @@ end
     }
 }
 clean { delete "${project.name}.gemspec" }
+
+protobuf {
+    protoc {
+        // The artifact spec for the Protobuf Compiler
+        artifact = 'com.google.protobuf:protoc:3.3.0'
+    }
+    plugins {
+        grpc {
+            artifact = 'io.grpc:protoc-gen-grpc-java:1.3.0'
+        }
+    }
+    generateProtoTasks {
+        all()*.plugins {
+            grpc {}
+        }
+    }
+    generatedFilesBaseDir = "$projectDir/src"
+}
