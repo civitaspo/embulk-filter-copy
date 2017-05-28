@@ -14,6 +14,7 @@ plugins {
     id "checkstyle"
 
     id "com.google.protobuf" version "0.8.1"
+    id "idea"
 }
 
 import com.github.jrubygradle.JRubyExec
@@ -33,9 +34,10 @@ targetCompatibility = 1.7
 dependencies {
     compile  "org.embulk:embulk-core:0.8.21"
     provided "org.embulk:embulk-core:0.8.21"
+    ["grpc-core", "grpc-stub", "grpc-protobuf"].each { module ->
+        compile "io.grpc:$module:1.3.0"
+    }
     compile 'com.google.protobuf:protobuf-java:3.3.0'
-    compile 'io.grpc:grpc-stub:1.3.0'
-    compile 'io.grpc:grpc-protobuf:1.3.0'
     testCompile "junit:junit:4.+"
 }
 
@@ -121,9 +123,27 @@ protobuf {
     }
     generateProtoTasks {
         all()*.plugins {
-            grpc {}
+            grpc {
+                // To generate deprecated interfaces and static bindService method,
+                // turn the enable_deprecated option to true below:
+                option 'enable_deprecated=false'
+            }
+        }
+
+        // Remove generated files before new generation.
+        generateProto.doFirst {
+            delete "${protobuf.generatedFilesBaseDir}"
         }
     }
     // Use `src` dir, because we can recognize generated class by the package name.
-    generatedFilesBaseDir = "$projectDir/src"
+    generatedFilesBaseDir = "$projectDir/src/generated"
 }
+
+idea {
+    module {
+        sourceDirs += file("${protobuf.generatedFilesBaseDir}/main/java");
+        // If you have additional sourceSets and/or codegen plugins, add all of them
+        sourceDirs += file("${protobuf.generatedFilesBaseDir}/main/grpc");
+    }
+}
+
