@@ -1,10 +1,22 @@
 package org.embulk.filter.copy;
 
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import io.grpc.Server;
+import io.grpc.ServerBuilder;
+import io.grpc.ServerProvider;
+import io.grpc.StatusRuntimeException;
+import io.grpc.netty.NettyServerBuilder;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
+import org.embulk.grpc.ProduceRequest;
+import org.embulk.grpc.ProduceResponse;
+import org.embulk.grpc.RecordQueueGrpc;
+import org.embulk.grpc.service.RecordQueueService;
+import org.embulk.plugin.PluginClassLoader;
 import org.embulk.plugin.common.DefaultColumnVisitor;
 import org.embulk.service.EmbulkExecutorService;
 import org.embulk.service.PageCopyService;
@@ -19,7 +31,11 @@ import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
 import org.slf4j.Logger;
 
+import java.io.IOException;
+import java.nio.channels.MulticastChannel;
 import java.util.List;
+import java.util.ServiceLoader;
+import java.util.concurrent.TimeUnit;
 
 public class CopyFilterPlugin
         implements FilterPlugin
@@ -32,9 +48,94 @@ public class CopyFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
+
+        try {
+            new RecordQueueServer().start();
+        }
+        catch (IOException e) {
+            logger.error(e.getMessage(), e);
+        }
+        logger.warn("server is built.");
+        RecordQueueClient client = new RecordQueueClient();
+        client.produce();
+
         Schema outputSchema = inputSchema;
 
         control.run(task.dump(), outputSchema);
+    }
+
+    interface Sendable<T>
+    {
+        T build();
+    }
+
+    private class RecordQueueClient
+    {
+        private final ManagedChannel channel;
+        private final RecordQueueGrpc.RecordQueueBlockingStub blockingStub;
+
+        RecordQueueClient()
+        {
+            channel = ManagedChannelBuilder
+                    .forAddress("localhost", 50051)
+                    .usePlaintext(true)
+                    .build();
+            blockingStub = RecordQueueGrpc.newBlockingStub(channel);
+        }
+
+        public void shutdown() throws InterruptedException {
+            channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
+        }
+
+        public void produce() {
+            ProduceRequest req = ProduceRequest.newBuilder().build();
+            ProduceResponse res;
+            try {
+                res = blockingStub.produce(req);
+            } catch (StatusRuntimeException e) {
+                logger.warn("RPC failed: {}", e.getStatus());
+                return;
+            }
+            logger.info("{}", res);
+        }
+
+    }
+
+    private class RecordQueueServer
+    {
+        private Server server;
+
+        RecordQueueServer()
+        {
+        }
+
+        private void start()
+                throws IOException
+        {
+            /* The port on which the server should run */
+            int port = 50051;
+
+            server = ServerBuilder.foPPort(port)
+                    .addService(new RecordQueueService())
+                    .build()
+                    .start();
+            logger.info("Server started, listening on " + port);
+            Runtime.getRuntime().addShutdownHook(new Thread() {
+                @Override
+                public void run() {
+                    // Use stderr here since the logger may have been reset by its JVM shutdown hook.
+                    System.err.println("*** shutting down gRPC server since JVM is shutting down");
+                    RecordQueueServer.this.stop();
+                    System.err.println("*** server shut down");
+                }
+            });
+        }
+
+        private void stop() {
+            if (server != null) {
+                server.shutdown();
+            }
+        }
     }
 
     @Override

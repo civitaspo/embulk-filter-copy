@@ -1,0 +1,50 @@
+syntax = "proto3";
+// ref. https://github.com/grpc/grpc-java/tree/master/examples
+// ref. https://developers.google.com/protocol-buffers/docs/reference/google.protobuf
+// ref. https://github.com/google/protobuf/tree/master/src/google/protobuf
+
+package record_queue;
+
+import "google/protobuf/api.proto";
+import "google/protobuf/struct.proto";
+
+option java_multiple_files = true;
+option java_package = "org.embulk.grpc";
+option java_outer_classname = "RecordQueueProto";
+
+service RecordQueue {
+  rpc Produce (ProduceRequest) returns (ProduceResponse) {}
+  rpc Consume (ConsumeRequest) returns (ConsumeResponse) {}
+  rpc Describe (RecordQueueDescribeRequest) returns (RecordQueueDescribeResponse) {}
+}
+
+message ProduceRequest {
+  google.protobuf.Struct record = 1;
+}
+
+message ProduceResponse {
+  bool success = 1;
+  int64 offset = 2;
+}
+
+message ConsumeRequest {
+}
+
+message ConsumeResponse {
+  google.protobuf.Struct record = 1;
+}
+
+message RecordQueueDescribeRequest {
+
+}
+
+message RecordQueueDescribeResponse {
+  google.protobuf.Api api = 1;
+}
+
+message StatusRequest {
+}
+
+message StatusResponse {
+  bool is_open = 1;
+}
