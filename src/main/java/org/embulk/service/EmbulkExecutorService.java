@@ -28,6 +28,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 public class EmbulkExecutorService
 {
@@ -107,7 +108,7 @@ public class EmbulkExecutorService
 
     private ExecutorService newThreadPool(int numThreads)
     {
-        return Executors.newFixedThreadPool(numThreads);
+        return Executors.newFixedThreadPool(numThreads, r -> new Thread(r, "embulk-executor-service"));
     }
 
     private ConfigSource emptyConfigSource()

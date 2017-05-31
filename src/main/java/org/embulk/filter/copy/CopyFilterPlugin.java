@@ -133,7 +133,10 @@ public class CopyFilterPlugin
                         @Override
                         public void jsonColumn(Column column)
                         {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getJson(column)));
+                            unlessNull(column, () -> {
+                                event.put(column.getName(), pageReader.getJson(column).toJson()); // TODO: explain why `toJson` is required.
+                                logger.warn("{}", pageReader.getJson(column));
+                            });
                         }
 
                         private void unlessNull(Column column, Runnable runnable)

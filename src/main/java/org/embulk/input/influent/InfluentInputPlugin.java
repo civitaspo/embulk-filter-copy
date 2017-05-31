@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class InfluentInputPlugin
@@ -86,11 +87,16 @@ public class InfluentInputPlugin
                     ForwardCallback.ofSyncConsumer(eventStream -> {
                         eventStream.getEntries().forEach(eventEntry -> {
                             eventEntry.getRecord().entrySet().forEach(valueValueEntry -> {
-                                logger.info("{}", valueValueEntry);
-                                logger.info("{}", valueValueEntry);
+                                try {
+                                    logger.info("{}", valueValueEntry);
+                                    logger.info("{}", valueValueEntry.getValue());
+                                }
+                                catch (Exception e) {
+                                    logger.warn(e.getMessage(), e);
+                                }
                             });
                         });
-                        }, Executors.newFixedThreadPool(1)))
+                        }, Executors.newFixedThreadPool(1, r -> new Thread(r, "embulk-input-influent"))))
                     .localAddress(24224)
                     .build();
 
