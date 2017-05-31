@@ -1,3 +1,3 @@
 Embulk::JavaPlugin.register_input(
-  "page", "org.embulk.input.page.PageInputPlugin",
+  "influent", "org.embulk.input.influent.InfluentInputPlugin",
   File.expand_path('../../../../classpath', __FILE__))

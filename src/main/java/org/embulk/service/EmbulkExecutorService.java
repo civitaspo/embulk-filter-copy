@@ -87,7 +87,7 @@ public class EmbulkExecutorService
         while (!areAllExecutionsFinished()) {
             logger.info("all exec are not finished yet.");
             try {
-                Thread.sleep(5000L); // 5 seconds
+                Thread.sleep(3000L); // 3 seconds
             }
             catch (InterruptedException e) {
                 logger.warn("Sleep failed", e);

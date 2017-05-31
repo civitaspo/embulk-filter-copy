@@ -16,5 +16,4 @@ filters:
       out:
         type: stdout
 out:
-  type: 'null'
-  # type: stdout
+  type: stdout

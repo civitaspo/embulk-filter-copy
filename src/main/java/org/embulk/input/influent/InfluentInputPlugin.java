@@ -1,6 +1,7 @@
-package org.embulk.input.page;
+package org.embulk.input.influent;
 
-import com.google.common.base.Optional;
+import influent.forward.ForwardCallback;
+import influent.forward.ForwardServer;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDiff;
 import org.embulk.config.ConfigInject;
@@ -9,12 +10,10 @@ import org.embulk.config.Task;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
 import org.embulk.plugin.common.DefaultColumnVisitor;
-import org.embulk.service.PageQueueService;
 import org.embulk.spi.BufferAllocator;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.InputPlugin;
-import org.embulk.spi.Page;
 import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
@@ -23,11 +22,23 @@ import org.embulk.spi.SchemaConfig;
 import org.slf4j.Logger;
 
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public class PageInputPlugin
+public class InfluentInputPlugin
         implements InputPlugin
 {
-    private final static Logger logger = Exec.getLogger(PageInputPlugin.class);
+    private final static Logger logger = Exec.getLogger(InfluentInputPlugin.class);
+
+    public interface PluginTask
+            extends Task
+    {
+        @Config("columns")
+        SchemaConfig getColumns();
+
+        @ConfigInject
+        BufferAllocator getBufferAllocator();
+    }
 
     @Override
     public ConfigDiff transaction(ConfigSource config,
@@ -68,32 +79,38 @@ public class PageInputPlugin
         ColumnVisitor visitor = new DefaultColumnVisitor(pageReader, pageBuilder);
 
         try {
-            logger.info("embulk-input-page: start dequeue");
+            logger.info("embulk-input-influent: start dequeue");
             // lifecycle がいる！！
-            while (!PageQueueService.isTaskQueueClosed(task.getQueueName())) {
-                logger.info("embulk-input-page: server is running");
 
-                logger.info("try to dequeue");
-                Optional<Page> page = PageQueueService.dequeue(task.getQueueName());
+            ForwardServer server = new ForwardServer.Builder(
+                    ForwardCallback.ofSyncConsumer(eventStream -> {
+                        eventStream.getEntries().forEach(eventEntry -> {
+                            eventEntry.getRecord().entrySet().forEach(valueValueEntry -> {
+                                logger.info("{}", valueValueEntry);
+                                logger.info("{}", valueValueEntry);
+                            });
+                        });
+                        }, Executors.newFixedThreadPool(1)))
+                    .localAddress(24224)
+                    .build();
 
-                if (page.isPresent()) {
-                    logger.info("embulk-input-page: get page");
-                    pageReader.setPage(page.get());
-                    while (pageReader.nextRecord()) {
-                        logger.info("embulk-input-page: add record!!!!");
-                        pageReader.getSchema().visitColumns(visitor);
-                        pageBuilder.addRecord();
-                    }
+            server.start();
+
+            AtomicBoolean isShutdown = new AtomicBoolean(false);
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> isShutdown.set(true)));
+
+            while (!isShutdown.get()) {
+                logger.info("embulk-input-influent: running yet");
+                try {
+                    Thread.sleep(1000L);
                 }
-                else {
-                    try {
-                        Thread.sleep(5 * 1000);
-                    }
-                    catch (InterruptedException e) {
-                        logger.warn(e.getMessage(), e);
-                    }
+                catch (InterruptedException e) {
+                    logger.warn(e.getMessage(), e);
                 }
             }
+            logger.info("embulk-input-influent: input finished!");
+
+            server.shutdown();
         }
         finally {
             pageBuilder.finish();
@@ -106,18 +123,5 @@ public class PageInputPlugin
     public ConfigDiff guess(ConfigSource config)
     {
         return Exec.newConfigDiff();
-    }
-
-    public interface PluginTask
-            extends Task
-    {
-        @Config("queue_name")
-        String getQueueName();
-
-        @Config("columns")
-        SchemaConfig getColumns();
-
-        @ConfigInject
-        BufferAllocator getBufferAllocator();
     }
 }
