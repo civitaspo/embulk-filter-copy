@@ -5,10 +5,12 @@ in:
     type: csv
     delimiter: "\t"
     skip_header_lines: 0
+    null_string: ""
     columns:
       - { name: id, type: long }
       - { name: description, type: string }
       - { name: name, type: string }
+      - { name: payload, type: json}
     stop_on_invalid_record: true
 filters:
   - type: copy
@@ -16,5 +18,4 @@ filters:
       out:
         type: stdout
 out:
-  type: 'null'
-  # type: stdout
+  type: stdout

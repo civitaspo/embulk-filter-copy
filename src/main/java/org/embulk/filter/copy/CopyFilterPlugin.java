@@ -1,26 +1,15 @@
 package org.embulk.filter.copy;
 
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import io.grpc.Server;
-import io.grpc.ServerBuilder;
-import io.grpc.ServerProvider;
-import io.grpc.StatusRuntimeException;
-import io.grpc.netty.NettyServerBuilder;
+import com.google.common.collect.Maps;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.grpc.ProduceRequest;
-import org.embulk.grpc.ProduceResponse;
-import org.embulk.grpc.RecordQueueGrpc;
-import org.embulk.grpc.service.RecordQueueService;
-import org.embulk.plugin.PluginClassLoader;
 import org.embulk.plugin.common.DefaultColumnVisitor;
 import org.embulk.service.EmbulkExecutorService;
 import org.embulk.service.PageCopyService;
-import org.embulk.service.PageQueueService;
+import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
@@ -29,18 +18,36 @@ import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
+import org.embulk.spi.time.TimestampFormatter;
+import org.komamitsu.fluency.Fluency;
 import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.nio.channels.MulticastChannel;
 import java.util.List;
-import java.util.ServiceLoader;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 
 public class CopyFilterPlugin
         implements FilterPlugin
 {
     private final static Logger logger = Exec.getLogger(CopyFilterPlugin.class);
+
+    public interface EmbulkConfig
+            extends Task
+    {
+        @Config("filters")
+        @ConfigDefault("[]")
+        List<ConfigSource> getFilterConfig();
+
+        @Config("out")
+        ConfigSource getOutputConfig();
+    }
+
+    public interface PluginTask
+            extends Task, TimestampFormatter.Task
+    {
+        @Config("config")
+        EmbulkConfig getConfig();
+    }
 
     @Override
     public void transaction(ConfigSource config, Schema inputSchema,
@@ -48,133 +55,112 @@ public class CopyFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
+        ConfigSource inputConfig = Exec.newConfigSource();
+        inputConfig.set("type", "influent");
+        inputConfig.set("columns", inputSchema);
+        inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
+        inputConfig.set("default_timezone", task.getDefaultTimeZone());
 
-        try {
-            new RecordQueueServer().start();
-        }
-        catch (IOException e) {
-            logger.error(e.getMessage(), e);
-        }
-        logger.warn("server is built.");
-        RecordQueueClient client = new RecordQueueClient();
-        client.produce();
+        ConfigSource anotherConfig = Exec.newConfigSource();
+        anotherConfig.set("in", inputConfig);
+        anotherConfig.set("filters", task.getConfig().getFilterConfig());
+        anotherConfig.set("out", task.getConfig().getOutputConfig());
+
+        final EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(1, Exec.getInjector());
+        embulkExecutorService.executeAsync(anotherConfig);
 
         Schema outputSchema = inputSchema;
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            embulkExecutorService.waitExecutionFinished();
+            embulkExecutorService.shutdown();
+        }));
 
         control.run(task.dump(), outputSchema);
     }
 
-    interface Sendable<T>
-    {
-        T build();
-    }
-
-    private class RecordQueueClient
-    {
-        private final ManagedChannel channel;
-        private final RecordQueueGrpc.RecordQueueBlockingStub blockingStub;
-
-        RecordQueueClient()
-        {
-            channel = ManagedChannelBuilder
-                    .forAddress("localhost", 50051)
-                    .usePlaintext(true)
-                    .build();
-            blockingStub = RecordQueueGrpc.newBlockingStub(channel);
-        }
-
-        public void shutdown() throws InterruptedException {
-            channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
-        }
-
-        public void produce() {
-            ProduceRequest req = ProduceRequest.newBuilder().build();
-            ProduceResponse res;
-            try {
-                res = blockingStub.produce(req);
-            } catch (StatusRuntimeException e) {
-                logger.warn("RPC failed: {}", e.getStatus());
-                return;
-            }
-            logger.info("{}", res);
-        }
-
-    }
-
-    private class RecordQueueServer
-    {
-        private Server server;
-
-        RecordQueueServer()
-        {
-        }
-
-        private void start()
-                throws IOException
-        {
-            /* The port on which the server should run */
-            int port = 50051;
-
-            server = ServerBuilder.foPPort(port)
-                    .addService(new RecordQueueService())
-                    .build()
-                    .start();
-            logger.info("Server started, listening on " + port);
-            Runtime.getRuntime().addShutdownHook(new Thread() {
-                @Override
-                public void run() {
-                    // Use stderr here since the logger may have been reset by its JVM shutdown hook.
-                    System.err.println("*** shutting down gRPC server since JVM is shutting down");
-                    RecordQueueServer.this.stop();
-                    System.err.println("*** server shut down");
-                }
-            });
-        }
-
-        private void stop() {
-            if (server != null) {
-                server.shutdown();
-            }
-        }
-    }
 
     @Override
     public PageOutput open(TaskSource taskSource, final Schema inputSchema,
             final Schema outputSchema, final PageOutput output)
     {
         final PluginTask task = taskSource.loadTask(PluginTask.class);
-        final EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(1, Exec.getInjector());
-
-        final String queueName = String.format("%s-%d", Thread.currentThread().getName(), System.currentTimeMillis());
-        PageQueueService.openNewTaskQueue(queueName);
-
-        ConfigSource inputConfig = Exec.newConfigSource();
-        inputConfig.set("type", "page");
-        inputConfig.set("queue_name", queueName);
-        inputConfig.set("columns", inputSchema);
-
-        ConfigSource config = Exec.newConfigSource();
-        config.set("in", inputConfig);
-        config.set("filters", task.getConfig().getFilterConfig());
-        config.set("out", task.getConfig().getOutputConfig());
-
-        embulkExecutorService.executeAsync(config);
+        TimestampFormatter timestampFormatter = new TimestampFormatter(
+                task.getJRuby(),
+                task.getDefaultTimestampFormat(),
+                task.getDefaultTimeZone());
 
         return new PageOutput()
         {
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
             private final ColumnVisitor visitor = new DefaultColumnVisitor(pageReader, pageBuilder);
+            private final Fluency fluency = getFluency();
 
             @Override
             public void add(Page page)
             {
                 logger.info("enqueue!!!");
                 Page newPage = PageCopyService.copy(page);
-                boolean isEnqueued = PageQueueService.enqueue(queueName, newPage);
-                if (!isEnqueued) {
-                    logger.warn("enqueue failed!");
+                pageReader.setPage(newPage);
+                while (pageReader.nextRecord()) {
+                    Map<String, Object> event = Maps.newHashMap();
+                    outputSchema.visitColumns(new ColumnVisitor() {
+                        @Override
+                        public void booleanColumn(Column column)
+                        {
+                            unlessNull(column, () -> event.put(column.getName(), pageReader.getBoolean(column)));
+                        }
+
+                        @Override
+                        public void longColumn(Column column)
+                        {
+                            unlessNull(column, () -> event.put(column.getName(), pageReader.getLong(column)));
+                        }
+
+                        @Override
+                        public void doubleColumn(Column column)
+                        {
+                            unlessNull(column, () -> event.put(column.getName(), pageReader.getDouble(column)));
+                        }
+
+                        @Override
+                        public void stringColumn(Column column)
+                        {
+                            unlessNull(column, () -> event.put(column.getName(), pageReader.getString(column)));
+                        }
+
+                        @Override
+                        public void timestampColumn(Column column)
+                        {
+                            unlessNull(column, () -> event.put(column.getName(), timestampFormatter.format(pageReader.getTimestamp(column))));
+                        }
+
+                        @Override
+                        public void jsonColumn(Column column)
+                        {
+                            unlessNull(column, () -> {
+                                event.put(column.getName(), pageReader.getJson(column).toJson()); // TODO: explain why `toJson` is required.
+                            });
+                        }
+
+                        private void unlessNull(Column column, Runnable runnable)
+                        {
+                            if (pageReader.isNull(column)) {
+                                event.put(column.getName(), null);
+                                return;
+                            }
+                            runnable.run();
+                        }
+                    });
+                    try {
+                        fluency.emit("embulk", event);
+                    }
+                    catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
+
                 pageReader.setPage(page);
 
                 while (pageReader.nextRecord()) {
@@ -186,34 +172,36 @@ public class CopyFilterPlugin
             @Override
             public void finish()
             {
+                try {
+                    fluency.flush();
+                }
+                catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
                 pageBuilder.finish();
             }
 
             @Override
             public void close()
             {
+                try {
+                    fluency.close();
+                }
+                catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
                 pageBuilder.close();
-                embulkExecutorService.waitExecutionFinished();
-                embulkExecutorService.shutdown();
+            }
+
+            private Fluency getFluency()
+            {
+                try {
+                    return Fluency.defaultFluency();
+                }
+                catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
         };
-    }
-
-    public interface PluginTask
-            extends Task
-    {
-        @Config("config")
-        EmbulkConfig getConfig();
-    }
-
-    public interface EmbulkConfig
-            extends Task
-    {
-        @Config("filters")
-        @ConfigDefault("[]")
-        List<ConfigSource> getFilterConfig();
-
-        @Config("out")
-        ConfigSource getOutputConfig();
     }
 }
