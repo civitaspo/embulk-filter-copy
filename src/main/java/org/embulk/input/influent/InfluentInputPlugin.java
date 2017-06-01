@@ -1,5 +1,6 @@
 package org.embulk.input.influent;
 
+import com.google.common.collect.ImmutableMap;
 import influent.forward.ForwardCallback;
 import influent.forward.ForwardServer;
 import org.embulk.config.Config;
@@ -9,21 +10,24 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
-import org.embulk.plugin.common.DefaultColumnVisitor;
 import org.embulk.spi.BufferAllocator;
-import org.embulk.spi.ColumnVisitor;
+import org.embulk.spi.Column;
+import org.embulk.spi.DataException;
 import org.embulk.spi.Exec;
 import org.embulk.spi.InputPlugin;
 import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
-import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
 import org.embulk.spi.SchemaConfig;
+import org.embulk.spi.json.JsonParser;
+import org.embulk.spi.time.TimestampParser;
+import org.embulk.spi.type.Types;
+import org.msgpack.value.Value;
 import org.slf4j.Logger;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class InfluentInputPlugin
@@ -32,7 +36,7 @@ public class InfluentInputPlugin
     private final static Logger logger = Exec.getLogger(InfluentInputPlugin.class);
 
     public interface PluginTask
-            extends Task
+            extends Task, TimestampParser.Task
     {
         @Config("columns")
         SchemaConfig getColumns();
@@ -75,28 +79,90 @@ public class InfluentInputPlugin
             PageOutput output)
     {
         PluginTask task = taskSource.loadTask(PluginTask.class);
-        PageBuilder pageBuilder = new PageBuilder(task.getBufferAllocator(), schema, output);
-        PageReader pageReader = new PageReader(schema);
-        ColumnVisitor visitor = new DefaultColumnVisitor(pageReader, pageBuilder);
+        TimestampParser timestampParser = new TimestampParser(
+                task.getJRuby(),
+                task.getDefaultTimestampFormat(),
+                task.getDefaultTimeZone());
+        JsonParser jsonParser = new JsonParser();
 
-        try {
+
+        ImmutableMap.Builder<String, Column> builder = ImmutableMap.builder();
+        schema.getColumns().forEach(cc -> builder.put(cc.getName(), cc));
+        Map<String, Column> cMap = builder.build();
+
+        try (PageBuilder pageBuilder = new PageBuilder(task.getBufferAllocator(), schema, output)) {
             logger.info("embulk-input-influent: start dequeue");
             // lifecycle がいる！！
 
             ForwardServer server = new ForwardServer.Builder(
-                    ForwardCallback.ofSyncConsumer(eventStream -> {
-                        eventStream.getEntries().forEach(eventEntry -> {
-                            eventEntry.getRecord().entrySet().forEach(valueValueEntry -> {
-                                try {
-                                    logger.info("{}", valueValueEntry);
-                                    logger.info("{}", valueValueEntry.getValue());
+                    ForwardCallback.ofSyncConsumer(eventStream -> eventStream.getEntries().forEach(eventEntry -> {
+                        eventEntry.getRecord().entrySet().forEach(kv -> {
+
+                            // TODO:ColumnVisitor
+                            try {
+                                Column c = cMap.get(kv.getKey().asRawValue().asString());
+                                Value v = kv.getValue();
+
+                                if (Types.BOOLEAN.equals(c.getType())) {
+                                    if (v.isNilValue()) {
+                                        pageBuilder.setNull(c);
+                                    }
+                                    else {
+                                        pageBuilder.setBoolean(c, v.asBooleanValue().getBoolean());
+                                    }
                                 }
-                                catch (Exception e) {
-                                    logger.warn(e.getMessage(), e);
+                                else if (Types.STRING.equals(c.getType())) {
+                                    if (v.isNilValue()) {
+                                        pageBuilder.setNull(c);
+                                    }
+                                    else {
+                                        pageBuilder.setString(c, v.asStringValue().asString());
+                                    }
                                 }
-                            });
+                                else if (Types.LONG.equals(c.getType())) {
+                                    if (v.isNilValue()) {
+                                        pageBuilder.setNull(c);
+                                    }
+                                    else {
+                                        pageBuilder.setLong(c, v.asIntegerValue().asLong());
+                                    }
+                                }
+                                else if (Types.DOUBLE.equals(c.getType())) {
+                                    if (v.isNilValue()) {
+                                        pageBuilder.setNull(c);
+                                    }
+                                    else {
+                                        pageBuilder.setDouble(c, v.asFloatValue().toDouble());
+                                    }
+                                }
+                                else if (Types.TIMESTAMP.equals(c.getType())) {
+                                    if (v.isNilValue()) {
+                                        pageBuilder.setNull(c);
+                                    }
+                                    else {
+                                        pageBuilder.setTimestamp(c, timestampParser.parse(v.asStringValue().asString()));
+                                    }
+                                }
+                                else if (Types.JSON.equals(c.getType())) {
+                                    if (v.isNilValue()) {
+                                        pageBuilder.setNull(c);
+                                    }
+                                    else {
+                                        pageBuilder.setJson(c, jsonParser.parse(v.asStringValue().toString()));
+                                    }
+                                }
+                                else {
+                                    throw new DataException("unknown data type.");
+                                }
+
+                            }
+                            catch (Exception e) {
+                                logger.warn(e.getMessage(), e);
+                            }
                         });
-                        }, Executors.newFixedThreadPool(1, r -> new Thread(r, "embulk-input-influent"))))
+                        logger.info("add a record!!!");
+                        pageBuilder.addRecord();
+                    }), Executors.newFixedThreadPool(1, r -> new Thread(r, "embulk-input-influent"))))
                     .localAddress(24224)
                     .build();
 
@@ -117,8 +183,6 @@ public class InfluentInputPlugin
             logger.info("embulk-input-influent: input finished!");
 
             server.shutdown();
-        }
-        finally {
             pageBuilder.finish();
         }
 

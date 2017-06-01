@@ -18,13 +18,13 @@ import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
+import org.embulk.spi.time.TimestampFormatter;
 import org.komamitsu.fluency.Fluency;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 public class CopyFilterPlugin
         implements FilterPlugin
@@ -43,7 +43,7 @@ public class CopyFilterPlugin
     }
 
     public interface PluginTask
-            extends Task
+            extends Task, TimestampFormatter.Task
     {
         @Config("config")
         EmbulkConfig getConfig();
@@ -58,6 +58,8 @@ public class CopyFilterPlugin
         ConfigSource inputConfig = Exec.newConfigSource();
         inputConfig.set("type", "influent");
         inputConfig.set("columns", inputSchema);
+        inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
+        inputConfig.set("default_timezone", task.getDefaultTimeZone());
 
         ConfigSource anotherConfig = Exec.newConfigSource();
         anotherConfig.set("in", inputConfig);
@@ -83,6 +85,10 @@ public class CopyFilterPlugin
             final Schema outputSchema, final PageOutput output)
     {
         final PluginTask task = taskSource.loadTask(PluginTask.class);
+        TimestampFormatter timestampFormatter = new TimestampFormatter(
+                task.getJRuby(),
+                task.getDefaultTimestampFormat(),
+                task.getDefaultTimeZone());
 
         return new PageOutput()
         {
@@ -127,7 +133,7 @@ public class CopyFilterPlugin
                         @Override
                         public void timestampColumn(Column column)
                         {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getTimestamp(column)));
+                            unlessNull(column, () -> event.put(column.getName(), timestampFormatter.format(pageReader.getTimestamp(column))));
                         }
 
                         @Override
@@ -135,14 +141,13 @@ public class CopyFilterPlugin
                         {
                             unlessNull(column, () -> {
                                 event.put(column.getName(), pageReader.getJson(column).toJson()); // TODO: explain why `toJson` is required.
-                                logger.warn("{}", pageReader.getJson(column));
                             });
                         }
 
                         private void unlessNull(Column column, Runnable runnable)
                         {
                             if (pageReader.isNull(column)) {
-                                event.put(column.getName(), Optional.empty());
+                                event.put(column.getName(), null);
                                 return;
                             }
                             runnable.run();
