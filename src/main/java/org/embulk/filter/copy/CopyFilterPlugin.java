@@ -1,16 +1,12 @@
 package org.embulk.filter.copy;
 
-import com.google.common.collect.Maps;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.plugin.common.DefaultColumnVisitor;
 import org.embulk.service.EmbulkExecutorService;
-import org.embulk.service.PageCopyService;
-import org.embulk.spi.Column;
-import org.embulk.spi.ColumnVisitor;
+import org.embulk.service.OutForwardService;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
@@ -19,12 +15,9 @@ import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
 import org.embulk.spi.time.TimestampFormatter;
-import org.komamitsu.fluency.Fluency;
 import org.slf4j.Logger;
 
-import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 public class CopyFilterPlugin
         implements FilterPlugin
@@ -43,7 +36,7 @@ public class CopyFilterPlugin
     }
 
     public interface PluginTask
-            extends Task, TimestampFormatter.Task
+            extends Task, TimestampFormatter.Task, OutForwardService.Task
     {
         @Config("config")
         EmbulkConfig getConfig();
@@ -94,77 +87,21 @@ public class CopyFilterPlugin
         {
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
-            private final ColumnVisitor visitor = new DefaultColumnVisitor(pageReader, pageBuilder);
-            private final Fluency fluency = getFluency();
+            private final PageBuilderVisitor pageBuilderVisitor = new PageBuilderVisitor(pageReader, pageBuilder);
+            private final MessageVisitor messageVisitor = new MessageVisitor(pageReader, timestampFormatter);
+            private final OutForwardService outForwardService = new OutForwardService(task);
 
             @Override
             public void add(Page page)
             {
-                logger.info("enqueue!!!");
-                Page newPage = PageCopyService.copy(page);
-                pageReader.setPage(newPage);
-                while (pageReader.nextRecord()) {
-                    Map<String, Object> event = Maps.newHashMap();
-                    outputSchema.visitColumns(new ColumnVisitor() {
-                        @Override
-                        public void booleanColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getBoolean(column)));
-                        }
-
-                        @Override
-                        public void longColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getLong(column)));
-                        }
-
-                        @Override
-                        public void doubleColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getDouble(column)));
-                        }
-
-                        @Override
-                        public void stringColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getString(column)));
-                        }
-
-                        @Override
-                        public void timestampColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), timestampFormatter.format(pageReader.getTimestamp(column))));
-                        }
-
-                        @Override
-                        public void jsonColumn(Column column)
-                        {
-                            unlessNull(column, () -> {
-                                event.put(column.getName(), pageReader.getJson(column).toJson()); // TODO: explain why `toJson` is required.
-                            });
-                        }
-
-                        private void unlessNull(Column column, Runnable runnable)
-                        {
-                            if (pageReader.isNull(column)) {
-                                event.put(column.getName(), null);
-                                return;
-                            }
-                            runnable.run();
-                        }
-                    });
-                    try {
-                        fluency.emit("embulk", event);
-                    }
-                    catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-
                 pageReader.setPage(page);
-
                 while (pageReader.nextRecord()) {
-                    outputSchema.visitColumns(visitor);
+                    outForwardService.emitMessage(message -> {
+                        messageVisitor.setMessage(message);
+                        outputSchema.visitColumns(messageVisitor);
+                    });
+
+                    outputSchema.visitColumns(pageBuilderVisitor);
                     pageBuilder.addRecord();
                 }
             }
@@ -172,36 +109,17 @@ public class CopyFilterPlugin
             @Override
             public void finish()
             {
-                try {
-                    fluency.flush();
-                }
-                catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                outForwardService.finish();
                 pageBuilder.finish();
             }
 
             @Override
             public void close()
             {
-                try {
-                    fluency.close();
-                }
-                catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                outForwardService.close();
                 pageBuilder.close();
             }
 
-            private Fluency getFluency()
-            {
-                try {
-                    return Fluency.defaultFluency();
-                }
-                catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
         };
     }
 }
