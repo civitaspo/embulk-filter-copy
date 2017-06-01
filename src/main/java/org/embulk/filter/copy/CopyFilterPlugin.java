@@ -6,6 +6,7 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
 import org.embulk.service.EmbulkExecutorService;
+import org.embulk.service.OutForwardVisitor;
 import org.embulk.service.OutForwardService;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
@@ -88,7 +89,7 @@ public class CopyFilterPlugin
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
             private final PageBuilderVisitor pageBuilderVisitor = new PageBuilderVisitor(pageReader, pageBuilder);
-            private final MessageVisitor messageVisitor = new MessageVisitor(pageReader, timestampFormatter);
+            private final OutForwardVisitor outForwardVisitor = new OutForwardVisitor(pageReader, timestampFormatter);
             private final OutForwardService outForwardService = new OutForwardService(task);
 
             @Override
@@ -97,8 +98,8 @@ public class CopyFilterPlugin
                 pageReader.setPage(page);
                 while (pageReader.nextRecord()) {
                     outForwardService.emitMessage(message -> {
-                        messageVisitor.setMessage(message);
-                        outputSchema.visitColumns(messageVisitor);
+                        outForwardVisitor.setMessage(message);
+                        outputSchema.visitColumns(outForwardVisitor);
                     });
 
                     outputSchema.visitColumns(pageBuilderVisitor);

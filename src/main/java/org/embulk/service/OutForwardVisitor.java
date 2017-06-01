@@ -1,6 +1,5 @@
-package org.embulk.filter.copy;
+package org.embulk.service;
 
-import com.google.common.collect.Maps;
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.PageReader;
@@ -8,14 +7,14 @@ import org.embulk.spi.time.TimestampFormatter;
 
 import java.util.Map;
 
-public class MessageVisitor
+public class OutForwardVisitor
     implements ColumnVisitor
 {
     private final PageReader reader;
     private final TimestampFormatter timestampFormatter;
     private Map<String, Object> message;
 
-    public MessageVisitor(PageReader reader, TimestampFormatter timestampFormatter)
+    public OutForwardVisitor(PageReader reader, TimestampFormatter timestampFormatter)
     {
         this.reader = reader;
         this.timestampFormatter = timestampFormatter;
