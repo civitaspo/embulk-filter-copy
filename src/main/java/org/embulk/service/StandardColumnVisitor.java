@@ -1,17 +1,17 @@
-package org.embulk.filter.copy;
+package org.embulk.service;
 
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageReader;
 
-public class PageBuilderVisitor
+public class StandardColumnVisitor
     implements ColumnVisitor
 {
     private final PageReader reader;
     private final PageBuilder builder;
 
-    PageBuilderVisitor(PageReader reader, PageBuilder builder)
+    public StandardColumnVisitor(PageReader reader, PageBuilder builder)
     {
         this.reader = reader;
         this.builder = builder;
