@@ -1,4 +1,4 @@
-package org.embulk.service;
+package org.embulk.service.plugin.copy;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;

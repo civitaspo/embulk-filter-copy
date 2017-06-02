@@ -1,4 +1,4 @@
-package org.embulk.input.influent;
+package org.embulk.input.copy;
 
 public class TestInfluentInputPlugin
 {

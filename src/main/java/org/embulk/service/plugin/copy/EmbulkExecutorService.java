@@ -1,4 +1,4 @@
-package org.embulk.service;
+package org.embulk.service.plugin.copy;
 
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.FutureCallback;
@@ -10,25 +10,20 @@ import com.google.inject.Injector;
 import org.embulk.EmbulkEmbed;
 import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
-import org.embulk.exec.BulkLoader;
 import org.embulk.exec.ExecutionResult;
-import org.embulk.exec.PartialExecutionException;
 import org.embulk.guice.LifeCycleInjector;
 import org.embulk.spi.Exec;
-import org.embulk.spi.ExecSession;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadFactory;
 
 public class EmbulkExecutorService
 {

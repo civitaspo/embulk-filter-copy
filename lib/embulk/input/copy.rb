@@ -1,3 +1,3 @@
 Embulk::JavaPlugin.register_input(
-  "influent", "org.embulk.input.influent.InfluentInputPlugin",
+  "copy", "org.embulk.input.copy.CopyInputPlugin",
   File.expand_path('../../../../classpath', __FILE__))

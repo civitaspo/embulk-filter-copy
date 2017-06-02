@@ -1,4 +1,4 @@
-package org.embulk.input.influent;
+package org.embulk.input.copy;
 
 import com.google.common.collect.ImmutableMap;
 import influent.forward.ForwardCallback;
@@ -30,10 +30,10 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class InfluentInputPlugin
+public class CopyInputPlugin
         implements InputPlugin
 {
-    private final static Logger logger = Exec.getLogger(InfluentInputPlugin.class);
+    private final static Logger logger = Exec.getLogger(CopyInputPlugin.class);
 
     public interface PluginTask
             extends Task, TimestampParser.Task
@@ -91,7 +91,7 @@ public class InfluentInputPlugin
         Map<String, Column> cMap = builder.build();
 
         try (PageBuilder pageBuilder = new PageBuilder(task.getBufferAllocator(), schema, output)) {
-            logger.info("embulk-input-influent: start dequeue");
+            logger.info("embulk-input-copy: start dequeue");
             // lifecycle がいる！！
 
             ForwardServer server = new ForwardServer.Builder(
@@ -101,6 +101,7 @@ public class InfluentInputPlugin
                             // TODO:ColumnVisitor
                             try {
                                 Column c = cMap.get(kv.getKey().asRawValue().asString());
+
                                 Value v = kv.getValue();
 
                                 if (Types.BOOLEAN.equals(c.getType())) {
@@ -162,7 +163,7 @@ public class InfluentInputPlugin
                         });
                         logger.info("add a record!!!");
                         pageBuilder.addRecord();
-                    }), Executors.newFixedThreadPool(1, r -> new Thread(r, "embulk-input-influent"))))
+                    }), Executors.newFixedThreadPool(1, r -> new Thread(r, "embulk-input-copy"))))
                     .localAddress(24224)
                     .build();
 
@@ -172,7 +173,7 @@ public class InfluentInputPlugin
             Runtime.getRuntime().addShutdownHook(new Thread(() -> isShutdown.set(true)));
 
             while (!isShutdown.get()) {
-                logger.info("embulk-input-influent: running yet");
+                logger.info("embulk-input-copy: running yet");
                 try {
                     Thread.sleep(1000L);
                 }
@@ -180,7 +181,7 @@ public class InfluentInputPlugin
                     logger.warn(e.getMessage(), e);
                 }
             }
-            logger.info("embulk-input-influent: input finished!");
+            logger.info("embulk-input-copy: input finished!");
 
             server.shutdown();
             pageBuilder.finish();
