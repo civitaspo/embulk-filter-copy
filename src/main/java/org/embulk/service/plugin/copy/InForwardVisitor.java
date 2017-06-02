@@ -2,15 +2,15 @@ package org.embulk.service.plugin.copy;
 
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
-import org.embulk.spi.PageReader;
+import org.embulk.spi.PageBuilder;
 
-public class OutForwardVisitor
+public class InForwardVisitor
     implements ColumnVisitor
 {
-    private final PageReader reader;
-    private final OutForwardEventBuilder builder;
+    private final InForwardEventReader reader;
+    private final PageBuilder builder;
 
-    public OutForwardVisitor(PageReader reader, OutForwardEventBuilder builder)
+    public InForwardVisitor(InForwardEventReader reader, PageBuilder builder)
     {
         this.reader = reader;
         this.builder = builder;

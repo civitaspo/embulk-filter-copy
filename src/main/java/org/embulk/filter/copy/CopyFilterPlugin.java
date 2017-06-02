@@ -6,6 +6,7 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
 import org.embulk.service.plugin.copy.EmbulkExecutorService;
+import org.embulk.service.plugin.copy.OutForwardEventBuilder;
 import org.embulk.service.plugin.copy.OutForwardVisitor;
 import org.embulk.service.plugin.copy.OutForwardService;
 import org.embulk.service.plugin.copy.StandardColumnVisitor;
@@ -51,7 +52,7 @@ public class CopyFilterPlugin
         PluginTask task = config.loadConfig(PluginTask.class);
 
         ConfigSource inputConfig = Exec.newConfigSource();
-        inputConfig.set("type", "influent");
+        inputConfig.set("type", "copy");
         inputConfig.set("columns", inputSchema);
         inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
         inputConfig.set("default_timezone", task.getDefaultTimeZone());
@@ -74,7 +75,6 @@ public class CopyFilterPlugin
         control.run(task.dump(), outputSchema);
     }
 
-
     @Override
     public PageOutput open(TaskSource taskSource, final Schema inputSchema,
             final Schema outputSchema, final PageOutput output)
@@ -90,18 +90,17 @@ public class CopyFilterPlugin
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
             private final StandardColumnVisitor standardColumnVisitor = new StandardColumnVisitor(pageReader, pageBuilder);
-            private final OutForwardVisitor outForwardVisitor = new OutForwardVisitor(pageReader, timestampFormatter);
             private final OutForwardService outForwardService = new OutForwardService(task);
+            private final OutForwardEventBuilder eventBuilder = new OutForwardEventBuilder(outputSchema, timestampFormatter);
+            private final OutForwardVisitor outForwardVisitor = new OutForwardVisitor(pageReader, eventBuilder);
 
             @Override
             public void add(Page page)
             {
                 pageReader.setPage(page);
                 while (pageReader.nextRecord()) {
-                    outForwardService.emitMessage(message -> {
-                        outForwardVisitor.setMessage(message);
-                        outputSchema.visitColumns(outForwardVisitor);
-                    });
+                    outputSchema.visitColumns(outForwardVisitor);
+                    eventBuilder.emitMessage(outForwardService);
 
                     outputSchema.visitColumns(standardColumnVisitor);
                     pageBuilder.addRecord();

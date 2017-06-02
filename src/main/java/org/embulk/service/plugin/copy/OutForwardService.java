@@ -1,6 +1,5 @@
 package org.embulk.service.plugin.copy;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
@@ -8,13 +7,13 @@ import org.embulk.config.Task;
 import org.komamitsu.fluency.Fluency;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
 public class OutForwardService
 {
     public interface OutForwardTask
+            extends org.embulk.config.Task
     {
         @Config("host")
         @ConfigDefault("\"localhost\"")
@@ -28,13 +27,14 @@ public class OutForwardService
     }
 
     public interface Task
+            extends org.embulk.config.Task
     {
         @Config("out_forward")
         @ConfigDefault("{}") // TODO
         OutForwardTask getOutForwardTask();
 
         @Config("tag")
-        @ConfigDefault("embulk")
+        @ConfigDefault("\"embulk\"")
         String getTag();
     }
 
@@ -61,6 +61,11 @@ public class OutForwardService
     {
         Map<String, Object> message = Maps.newHashMap();
         consumer.accept(message);
+        emit(message);
+    }
+
+    public void emit(Map<String, Object> message)
+    {
         try {
             client.emit(task.getTag(), message);
         }
