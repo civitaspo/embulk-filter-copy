@@ -24,33 +24,70 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 public class EmbulkExecutorService
 {
     private final static Logger logger = Exec.getLogger(EmbulkExecutorService.class);
-    private final EmbulkEmbed embed;
+    private final Injector injector;
     private final ListeningExecutorService es;
-    private final List<Future> q = Lists.newArrayList();
+    private ListenableFuture<ExecutionResult> future;
 
-    public EmbulkExecutorService(int numThreads, Injector injector)
+    public EmbulkExecutorService(Injector injector)
     {
-        this.embed = newEmbulkEmbed(injector);
-        this.es = MoreExecutors.listeningDecorator(newThreadPool(numThreads));
+        this.injector = injector;
+        this.es = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(1, r -> new Thread(r, "embulk-executor-service")));
     }
 
     public void executeAsync(final ConfigSource config)
     {
         logger.info("execute with this config: {}", config);
-        ListenableFuture<ExecutionResult> future = es.submit(new Callable<ExecutionResult>()
-        {
-            @Override
-            public ExecutionResult call()
-                    throws Exception
-            {
-                return embed.run(config);
+        future = es.submit(embulkRun(config));
+        Futures.addCallback(future, resultFutureCallback());
+    }
+
+    public void shutdown()
+    {
+        if (!es.isShutdown()) {
+            es.shutdown();
+        }
+    }
+
+    public void waitExecutionFinished()
+    {
+        while (!(future.isDone() || future.isCancelled())) {
+            logger.info("all exec are not finished yet.");
+            try {
+                Thread.sleep(3000L); // 3 seconds
             }
-        });
-        Futures.addCallback(future, new FutureCallback<ExecutionResult>() {
+            catch (InterruptedException e) {
+                logger.warn("Sleep failed", e);
+            }
+        }
+    }
+
+    private Callable<ExecutionResult> embulkRun(ConfigSource config)
+    {
+        return () -> newEmbulkEmbed(injector).run(config);
+    }
+
+    private EmbulkEmbed newEmbulkEmbed(Injector injector)
+    {
+        try {
+            Constructor<EmbulkEmbed> constructor = EmbulkEmbed.class
+                    .getDeclaredConstructor(ConfigSource.class, LifeCycleInjector.class);
+            constructor.setAccessible(true);
+            return constructor.newInstance(Exec.newConfigSource(), injector);
+        }
+        catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
+            throw new ConfigException(e);
+        }
+    }
+
+    private FutureCallback<ExecutionResult> resultFutureCallback()
+    {
+        return new FutureCallback<ExecutionResult>()
+        {
             @Override
             public void onSuccess(@Nullable ExecutionResult result)
             {
@@ -66,61 +103,6 @@ public class EmbulkExecutorService
             {
                 throw new RuntimeException(t);
             }
-        });
-
-        q.add(future);
-    }
-
-    public void shutdown()
-    {
-        if (!es.isShutdown()) {
-            es.shutdown();
-        }
-    }
-
-    public void waitExecutionFinished()
-    {
-        while (!areAllExecutionsFinished()) {
-            logger.info("all exec are not finished yet.");
-            try {
-                Thread.sleep(3000L); // 3 seconds
-            }
-            catch (InterruptedException e) {
-                logger.warn("Sleep failed", e);
-            }
-        }
-    }
-
-    private boolean areAllExecutionsFinished()
-    {
-        for (Future future : q) {
-            if (!(future.isDone() || future.isCancelled())) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private ExecutorService newThreadPool(int numThreads)
-    {
-        return Executors.newFixedThreadPool(numThreads, r -> new Thread(r, "embulk-executor-service"));
-    }
-
-    private ConfigSource emptyConfigSource()
-    {
-        return Exec.newConfigSource();
-    }
-
-    private EmbulkEmbed newEmbulkEmbed(Injector injector)
-    {
-        try {
-            Constructor<EmbulkEmbed> constructor = EmbulkEmbed.class
-                    .getDeclaredConstructor(ConfigSource.class, LifeCycleInjector.class);
-            constructor.setAccessible(true);
-            return constructor.newInstance(emptyConfigSource(), injector);
-        }
-        catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
-            throw new ConfigException(e);
-        }
+        };
     }
 }

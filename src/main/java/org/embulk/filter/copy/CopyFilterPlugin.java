@@ -62,7 +62,7 @@ public class CopyFilterPlugin
         anotherConfig.set("filters", task.getConfig().getFilterConfig());
         anotherConfig.set("out", task.getConfig().getOutputConfig());
 
-        final EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(1, Exec.getInjector());
+        final EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(Exec.getInjector());
         embulkExecutorService.executeAsync(anotherConfig);
 
         Schema outputSchema = inputSchema;
