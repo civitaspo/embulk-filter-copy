@@ -3,7 +3,6 @@ package org.embulk.service.plugin.copy;
 import com.google.common.collect.Maps;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
-import org.embulk.config.Task;
 import org.komamitsu.fluency.Fluency;
 
 import java.io.IOException;
@@ -33,9 +32,21 @@ public class OutForwardService
         @ConfigDefault("{}") // TODO
         OutForwardTask getOutForwardTask();
 
-        @Config("tag")
-        @ConfigDefault("\"embulk\"")
-        String getTag();
+        @Config("message_tag")
+        @ConfigDefault("\"message\"")
+        String getMessageTag();
+
+        @Config("shutdown_tag")
+        @ConfigDefault("\"shutdown\"")
+        String getShutdownTag();
+    }
+
+    public static void sendShutdownMessage(Task task)
+    {
+        OutForwardService outForward = new OutForwardService(task);
+        outForward.emit(task.getShutdownTag(), Maps.newHashMap());
+        outForward.finish();
+        outForward.close();
     }
 
     private final Task task;
@@ -57,21 +68,19 @@ public class OutForwardService
         }
     }
 
-    public void emitMessage(Consumer<Map<String, Object>> consumer)
-    {
-        Map<String, Object> message = Maps.newHashMap();
-        consumer.accept(message);
-        emit(message);
-    }
-
-    public void emit(Map<String, Object> message)
+    public void emit(String tag, Map<String, Object> message)
     {
         try {
-            client.emit(task.getTag(), message);
+            client.emit(tag, message);
         }
         catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void emit(Map<String, Object> message)
+    {
+        emit(task.getMessageTag(), message);
     }
 
     public void finish()

@@ -98,7 +98,7 @@ public class CopyInputPlugin
                             }
                     )
                     .build()
-                    .runUntilCallbackFinished(untilShutdown());
+                    .runUntilShouldShutdown();
 
             pageBuilder.finish();
         }
@@ -110,24 +110,5 @@ public class CopyInputPlugin
     public ConfigDiff guess(ConfigSource config)
     {
         return Exec.newConfigDiff();
-    }
-
-    private Runnable untilShutdown()
-    {
-        AtomicBoolean isShutdown = new AtomicBoolean(false);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> isShutdown.set(true)));
-        return () ->
-        {
-            long startMillis = System.currentTimeMillis();
-            while (!isShutdown.get()) {
-                logger.info("embulk-input-copy: running yet (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
-                try {
-                    Thread.sleep(1000L);
-                }
-                catch (InterruptedException e) {
-                    logger.warn(e.getMessage(), e);
-                }
-            }
-        };
     }
 }

@@ -7,8 +7,8 @@ import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
 import org.embulk.service.plugin.copy.EmbulkExecutorService;
 import org.embulk.service.plugin.copy.OutForwardEventBuilder;
-import org.embulk.service.plugin.copy.OutForwardVisitor;
 import org.embulk.service.plugin.copy.OutForwardService;
+import org.embulk.service.plugin.copy.OutForwardVisitor;
 import org.embulk.service.plugin.copy.StandardColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
@@ -61,18 +61,17 @@ public class CopyFilterPlugin
         anotherConfig.set("in", inputConfig);
         anotherConfig.set("filters", task.getConfig().getFilterConfig());
         anotherConfig.set("out", task.getConfig().getOutputConfig());
-
-        final EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(Exec.getInjector());
+        EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(Exec.getInjector());
         embulkExecutorService.executeAsync(anotherConfig);
 
         Schema outputSchema = inputSchema;
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            embulkExecutorService.waitExecutionFinished();
-            embulkExecutorService.shutdown();
-        }));
-
         control.run(task.dump(), outputSchema);
+
+        OutForwardService.sendShutdownMessage(task);
+
+        embulkExecutorService.waitExecutionFinished();
+        embulkExecutorService.shutdown();
     }
 
     @Override
