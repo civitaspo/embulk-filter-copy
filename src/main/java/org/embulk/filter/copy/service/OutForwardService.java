@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 
 public class OutForwardService
 {
@@ -26,6 +27,42 @@ public class OutForwardService
         @ConfigDefault("24224")
         int getPort();
         void setPort(int port);
+
+        @Config("max_buffer_size")
+        @ConfigDefault("null")
+        Optional<Long> getMaxBufferSize();
+
+        @Config("buffer_chunk_initial_size")
+        @ConfigDefault("null")
+        Optional<Integer> getBufferChunkInitialSize();
+
+        @Config("buffer_chunk_retention_size")
+        @ConfigDefault("null")
+        Optional<Integer> getBufferChunkRetentionSize();
+
+        @Config("flush_interval_millis")
+        @ConfigDefault("null")
+        Optional<Integer> getFlushIntervalMillis();
+
+        @Config("sender_max_retry_count")
+        @ConfigDefault("null")
+        Optional<Integer> getSenderMaxRetryCount();
+
+        @Config("ack_response_mode")
+        @ConfigDefault("null")
+        Optional<Boolean> getAckResponseMode();
+
+        @Config("file_backup_dir")
+        @ConfigDefault("null")
+        Optional<String> getFileBackupDir();
+
+        @Config("wait_until_buffer_flushed")
+        @ConfigDefault("null")
+        Optional<Integer> getWaitUntilBufferFlushed();
+
+        @Config("wait_until_flusher_terminated")
+        @ConfigDefault("null")
+        Optional<Integer> getWaitUntilFlusherTerminated();
     }
 
     public interface Task
@@ -62,10 +99,44 @@ public class OutForwardService
         this.client = newFluency(task.getOutForwardTask());
     }
 
-    private Fluency newFluency(OutForwardTask forwardTask)
+    private Fluency.Config configureFluencyConfig(OutForwardTask t)
     {
+        Fluency.Config c = new Fluency.Config();
+        if (t.getMaxBufferSize().isPresent()) {
+            c.setMaxBufferSize(t.getMaxBufferSize().get());
+        }
+        if (t.getBufferChunkInitialSize().isPresent()) {
+            c.setBufferChunkInitialSize(t.getBufferChunkInitialSize().get());
+        }
+        if (t.getBufferChunkRetentionSize().isPresent()) {
+            c.setBufferChunkRetentionSize(t.getBufferChunkRetentionSize().get());
+        }
+        if (t.getFlushIntervalMillis().isPresent()) {
+            c.setFlushIntervalMillis(t.getFlushIntervalMillis().get());
+        }
+        if (t.getSenderMaxRetryCount().isPresent()) {
+            c.setSenderMaxRetryCount(t.getSenderMaxRetryCount().get());
+        }
+        if (t.getAckResponseMode().isPresent()) {
+            c.setAckResponseMode(t.getAckResponseMode().get());
+        }
+        if (t.getFileBackupDir().isPresent()) {
+            c.setFileBackupDir(t.getFileBackupDir().get());
+        }
+        if (t.getWaitUntilBufferFlushed().isPresent()) {
+            c.setWaitUntilBufferFlushed(t.getWaitUntilBufferFlushed().get());
+        }
+        if (t.getWaitUntilFlusherTerminated().isPresent()) {
+            c.setWaitUntilFlusherTerminated(t.getWaitUntilFlusherTerminated().get());
+        }
+        return c;
+    }
+
+    private Fluency newFluency(OutForwardTask t)
+    {
+        Fluency.Config c = configureFluencyConfig(t);
         try {
-            return Fluency.defaultFluency(forwardTask.getHost(), forwardTask.getPort());
+            return Fluency.defaultFluency(t.getHost(), t.getPort(), c);
         }
         catch (IOException e) {
             throw new RuntimeException(e);
