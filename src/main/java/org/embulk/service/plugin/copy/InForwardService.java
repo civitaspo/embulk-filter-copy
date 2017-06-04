@@ -10,6 +10,7 @@ import org.embulk.spi.Exec;
 import org.slf4j.Logger;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -84,11 +85,15 @@ public class InForwardService
 
     private final Task task;
     private final ForwardServer server;
+    private final ExecutorService callbackThread;
     private final AtomicBoolean shouldShutdown = new AtomicBoolean(false);
 
     private InForwardService(Task task, Consumer<EventStream> eventConsumer)
     {
         this.task = task;
+        this.callbackThread = Executors.newFixedThreadPool(
+                task.getNumThreads(),
+                r -> new Thread(r, task.getThreadName()));
         this.server = buildServer(eventConsumer);
     }
 
@@ -97,17 +102,7 @@ public class InForwardService
         return new ForwardServer.Builder(
                 ForwardCallback.ofSyncConsumer(
                         wrapEventConsumer(eventConsumer),
-                        Executors.newFixedThreadPool(
-                                task.getNumThreads(),
-                                r -> {
-                                    // TODO: is the best way to shut the thread down?
-                                    // This callback is not used after
-                                    Thread t = new Thread(r, task.getThreadName());
-                                    t.setDaemon(true);
-                                    return t;
-                                }
-                        )
-                ))
+                        callbackThread))
                 .localAddress(task.getInForwardTask().getPort())
                 .build();
     }
@@ -163,6 +158,10 @@ public class InForwardService
     {
         long startMillis = System.currentTimeMillis();
         logger.info("in_forward server start to shut down");
+        logger.info("first, callback is shutting down. (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
+        callbackThread.shutdown();
+        logger.info("callback finish to shut down (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
+
         CompletableFuture<Void> shutdown = server.shutdown();
 
         while (!(shutdown.isCancelled() || shutdown.isCompletedExceptionally() || shutdown.isDone())) {
@@ -174,6 +173,6 @@ public class InForwardService
                 logger.warn(e.getMessage(), e);
             }
         }
-        logger.info("in_forward server finish to shut down");
+        logger.info("in_forward server finish to shut down. (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
     }
 }
