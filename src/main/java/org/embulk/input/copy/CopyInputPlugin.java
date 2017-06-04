@@ -64,6 +64,7 @@ public class CopyInputPlugin
             Schema schema, int taskCount,
             List<TaskReport> successTaskReports)
     {
+        logger.info("input-copy: cleanup");
     }
 
     @Override

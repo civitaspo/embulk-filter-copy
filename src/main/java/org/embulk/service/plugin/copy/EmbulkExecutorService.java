@@ -43,9 +43,12 @@ public class EmbulkExecutorService
 
     public void shutdown()
     {
+        logger.info("embulk embed shutdown start");
         if (!es.isShutdown()) {
+            logger.info("embulk embed shutdown...");
             es.shutdown();
         }
+        logger.info("embulk embed shutdown finished");
     }
 
     public void waitExecutionFinished()

@@ -72,6 +72,7 @@ public class CopyFilterPlugin
 
         embulkExecutorService.waitExecutionFinished();
         embulkExecutorService.shutdown();
+        logger.info("filter-copy: transaction finished.");
     }
 
     @Override

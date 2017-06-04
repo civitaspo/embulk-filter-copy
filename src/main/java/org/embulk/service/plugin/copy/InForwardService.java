@@ -99,7 +99,13 @@ public class InForwardService
                         wrapEventConsumer(eventConsumer),
                         Executors.newFixedThreadPool(
                                 task.getNumThreads(),
-                                r -> new Thread(r, task.getThreadName())
+                                r -> {
+                                    // TODO: is the best way to shut the thread down?
+                                    // This callback is not used after
+                                    Thread t = new Thread(r, task.getThreadName());
+                                    t.setDaemon(true);
+                                    return t;
+                                }
                         )
                 ))
                 .localAddress(task.getInForwardTask().getPort())
