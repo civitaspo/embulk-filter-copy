@@ -9,7 +9,9 @@ import org.embulk.config.ConfigDefault;
 import org.embulk.spi.Exec;
 import org.slf4j.Logger;
 
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,6 +27,30 @@ public class InForwardService
         @Config("port")
         @ConfigDefault("24224")
         int getPort();
+
+        @Config("chunk_size_limit")
+        @ConfigDefault("null")
+        Optional<Long> getChunkSizeLimit();
+
+        @Config("backlog")
+        @ConfigDefault("null")
+        Optional<Integer> getBacklog();
+
+        @Config("send_buffer_size")
+        @ConfigDefault("null")
+        Optional<Integer> getSendBufferSize();
+
+        @Config("receive_buffer_size")
+        @ConfigDefault("null")
+        Optional<Integer> getReceiveBufferSize();
+
+        @Config("keep_alive_enabled")
+        @ConfigDefault("null")
+        Optional<Boolean> getKeepAliveEnabled();
+
+        @Config("tcp_no_delay_enabled")
+        @ConfigDefault("null")
+        Optional<Boolean> getTcpNoDelayEnabled();
     }
 
     public interface Task
@@ -94,17 +120,38 @@ public class InForwardService
         this.callbackThread = Executors.newFixedThreadPool(
                 task.getNumThreads(),
                 r -> new Thread(r, task.getThreadName()));
-        this.server = buildServer(eventConsumer);
+        this.server = buildServer(task.getInForwardTask(), eventConsumer, callbackThread);
     }
 
-    private ForwardServer buildServer(Consumer<EventStream> eventConsumer)
+    private ForwardServer buildServer(InForwardTask t, Consumer<EventStream> eventConsumer, Executor callbackThread)
     {
-        return new ForwardServer.Builder(
+        ForwardServer.Builder builder = new ForwardServer.Builder(
                 ForwardCallback.ofSyncConsumer(
                         wrapEventConsumer(eventConsumer),
-                        callbackThread))
-                .localAddress(task.getInForwardTask().getPort())
-                .build();
+                        callbackThread));
+
+        builder.localAddress(t.getPort());
+
+        if (t.getChunkSizeLimit().isPresent()) {
+            builder.chunkSizeLimit(t.getChunkSizeLimit().get());
+        }
+        if (t.getBacklog().isPresent()) {
+            builder.backlog(t.getBacklog().get());
+        }
+        if (t.getSendBufferSize().isPresent()) {
+            builder.sendBufferSize(t.getSendBufferSize().get());
+        }
+        if (t.getReceiveBufferSize().isPresent()) {
+            builder.receiveBufferSize(t.getReceiveBufferSize().get());
+        }
+        if (t.getKeepAliveEnabled().isPresent()) {
+            builder.keepAliveEnabled(t.getKeepAliveEnabled().get());
+        }
+        if (t.getTcpNoDelayEnabled().isPresent()) {
+            builder.tcpNoDelayEnabled(t.getTcpNoDelayEnabled().get());
+        }
+
+        return builder.build();
     }
 
     private Consumer<EventStream> wrapEventConsumer(Consumer<EventStream> eventConsumer)
