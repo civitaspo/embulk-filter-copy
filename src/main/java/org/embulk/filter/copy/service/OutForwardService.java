@@ -1,16 +1,19 @@
-package org.embulk.service.plugin.copy;
+package org.embulk.filter.copy.service;
 
 import com.google.common.collect.Maps;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
+import org.embulk.spi.Exec;
 import org.komamitsu.fluency.Fluency;
+import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.function.Consumer;
 
 public class OutForwardService
 {
+    private final static Logger logger = Exec.getLogger(OutForwardService.class);
+
     public interface OutForwardTask
             extends org.embulk.config.Task
     {
@@ -43,6 +46,7 @@ public class OutForwardService
 
     public static void sendShutdownMessage(Task task)
     {
+        logger.info("out_forward: send shutdown message.");
         OutForwardService outForward = new OutForwardService(task);
         outForward.emit(task.getShutdownTag(), Maps.newHashMap());
         outForward.finish();

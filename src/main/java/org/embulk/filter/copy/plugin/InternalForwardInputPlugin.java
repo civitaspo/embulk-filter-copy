@@ -1,4 +1,4 @@
-package org.embulk.input.copy;
+package org.embulk.filter.copy.plugin;
 
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDiff;
@@ -7,9 +7,9 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
-import org.embulk.service.plugin.copy.InForwardEventReader;
-import org.embulk.service.plugin.copy.InForwardService;
-import org.embulk.service.plugin.copy.InForwardVisitor;
+import org.embulk.filter.copy.service.InForwardEventReader;
+import org.embulk.filter.copy.service.InForwardService;
+import org.embulk.filter.copy.service.InForwardVisitor;
 import org.embulk.spi.BufferAllocator;
 import org.embulk.spi.Exec;
 import org.embulk.spi.InputPlugin;
@@ -23,10 +23,10 @@ import org.slf4j.Logger;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class CopyInputPlugin
+public class InternalForwardInputPlugin
         implements InputPlugin
 {
-    private final static Logger logger = Exec.getLogger(CopyInputPlugin.class);
+    private final static Logger logger = Exec.getLogger(InternalForwardInputPlugin.class);
 
     public interface PluginTask
             extends Task, TimestampParser.Task, InForwardService.Task

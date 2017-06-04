@@ -5,11 +5,11 @@ import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.service.plugin.copy.EmbulkExecutorService;
-import org.embulk.service.plugin.copy.OutForwardEventBuilder;
-import org.embulk.service.plugin.copy.OutForwardService;
-import org.embulk.service.plugin.copy.OutForwardVisitor;
-import org.embulk.service.plugin.copy.StandardColumnVisitor;
+import org.embulk.filter.copy.service.EmbulkExecutorService;
+import org.embulk.filter.copy.service.OutForwardEventBuilder;
+import org.embulk.filter.copy.service.OutForwardService;
+import org.embulk.filter.copy.service.OutForwardVisitor;
+import org.embulk.filter.copy.service.StandardColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
@@ -52,7 +52,7 @@ public class CopyFilterPlugin
         PluginTask task = config.loadConfig(PluginTask.class);
 
         ConfigSource inputConfig = Exec.newConfigSource();
-        inputConfig.set("type", "copy");
+        inputConfig.set("type", "internal_forward");
         inputConfig.set("columns", inputSchema);
         inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
         inputConfig.set("default_timezone", task.getDefaultTimeZone());

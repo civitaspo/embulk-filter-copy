@@ -1,4 +1,4 @@
-package org.embulk.service.plugin.copy;
+package org.embulk.filter.copy.service;
 
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;

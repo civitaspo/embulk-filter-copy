@@ -1,28 +1,29 @@
-package org.embulk.service.plugin.copy;
+package org.embulk.filter.copy.service;
 
 import org.embulk.spi.Column;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.PageBuilder;
+import org.embulk.spi.PageReader;
 
-public class InForwardVisitor
+public class StandardColumnVisitor
     implements ColumnVisitor
 {
-    private final InForwardEventReader reader;
+    private final PageReader reader;
     private final PageBuilder builder;
 
-    public InForwardVisitor(InForwardEventReader reader, PageBuilder builder)
+    public StandardColumnVisitor(PageReader reader, PageBuilder builder)
     {
         this.reader = reader;
         this.builder = builder;
     }
 
-    private void nullOr(Column column, Runnable r)
+    private void nullOr(Column column, Runnable runnable)
     {
         if (reader.isNull(column)) {
             builder.setNull(column);
             return;
         }
-        r.run();
+        runnable.run();
     }
 
     @Override

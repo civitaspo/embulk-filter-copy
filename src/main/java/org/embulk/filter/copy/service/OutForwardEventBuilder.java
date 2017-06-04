@@ -1,4 +1,4 @@
-package org.embulk.service.plugin.copy;
+package org.embulk.filter.copy.service;
 
 import com.google.common.collect.Maps;
 import org.embulk.spi.Column;
