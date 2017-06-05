@@ -1,4 +1,4 @@
-package org.embulk.filter.copy.service;
+package org.embulk.filter.copy.forward;
 
 import com.google.common.base.Optional;
 import influent.EventStream;

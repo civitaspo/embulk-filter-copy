@@ -6,9 +6,9 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
 import org.embulk.filter.copy.service.EmbulkExecutorService;
-import org.embulk.filter.copy.service.OutForwardEventBuilder;
-import org.embulk.filter.copy.service.OutForwardService;
-import org.embulk.filter.copy.service.OutForwardVisitor;
+import org.embulk.filter.copy.forward.OutForwardEventBuilder;
+import org.embulk.filter.copy.forward.OutForwardService;
+import org.embulk.filter.copy.forward.OutForwardVisitor;
 import org.embulk.filter.copy.service.StandardColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
@@ -50,7 +50,7 @@ public class CopyFilterPlugin
             FilterPlugin.Control control)
     {
         PluginTask task = config.loadConfig(PluginTask.class);
-
+logger.info("{}", task);
         ConfigSource inputConfig = Exec.newConfigSource();
         inputConfig.set("type", "internal_forward");
         inputConfig.set("columns", inputSchema);
