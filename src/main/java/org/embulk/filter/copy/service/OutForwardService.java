@@ -1,5 +1,6 @@
 package org.embulk.filter.copy.service;
 
+import com.google.common.base.Optional;
 import com.google.common.collect.Maps;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
@@ -9,7 +10,6 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.Optional;
 
 public class OutForwardService
 {

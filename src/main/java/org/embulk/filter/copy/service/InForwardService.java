@@ -1,5 +1,6 @@
 package org.embulk.filter.copy.service;
 
+import com.google.common.base.Optional;
 import influent.EventStream;
 import influent.Tag;
 import influent.forward.ForwardCallback;
@@ -9,7 +10,6 @@ import org.embulk.config.ConfigDefault;
 import org.embulk.spi.Exec;
 import org.slf4j.Logger;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
