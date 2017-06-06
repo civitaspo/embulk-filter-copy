@@ -83,9 +83,6 @@ public class InternalForwardInputPlugin
             InForwardEventReader eventReader = new InForwardEventReader(schema, timestampParser);
             InForwardVisitor inForwardVisitor = new InForwardVisitor(eventReader, pageBuilder);
 
-            AtomicBoolean isShutdown = new AtomicBoolean(false);
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> isShutdown.set(true)));
-
             InForwardService.builder()
                     .task(task)
                     .forEachEventCallback(
