@@ -55,19 +55,11 @@ public class InForwardService
     }
 
     public interface Task
-            extends org.embulk.config.Task
+            extends ForwardBaseTask
     {
         @Config("in_forward")
         @ConfigDefault("{}")
         InForwardTask getInForwardTask();
-
-        @Config("shutdown_tag")
-        @ConfigDefault("\"shutdown\"")
-        String getShutdownTag();
-
-        @Config("message_tag")
-        @ConfigDefault("\"message\"")
-        String getMessageTag();
     }
 
     public static class Builder

@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class InternalForwardInputPlugin
         implements InputPlugin
 {
+    public final static String PLUGIN_NAME = "internal_forward";
     private final static Logger logger = Exec.getLogger(InternalForwardInputPlugin.class);
 
     public interface PluginTask

@@ -66,19 +66,11 @@ public class OutForwardService
     }
 
     public interface Task
-            extends org.embulk.config.Task
+            extends ForwardBaseTask
     {
         @Config("out_forward")
-        @ConfigDefault("{}") // TODO
+        @ConfigDefault("{}")
         OutForwardTask getOutForwardTask();
-
-        @Config("message_tag")
-        @ConfigDefault("\"message\"")
-        String getMessageTag();
-
-        @Config("shutdown_tag")
-        @ConfigDefault("\"shutdown\"")
-        String getShutdownTag();
     }
 
     public static void sendShutdownMessage(Task task)

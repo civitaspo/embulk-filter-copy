@@ -5,9 +5,11 @@ import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
+import org.embulk.filter.copy.forward.InForwardService;
 import org.embulk.filter.copy.forward.OutForwardEventBuilder;
 import org.embulk.filter.copy.forward.OutForwardService;
 import org.embulk.filter.copy.forward.OutForwardVisitor;
+import org.embulk.filter.copy.plugin.InternalForwardInputPlugin;
 import org.embulk.filter.copy.service.EmbulkExecutorService;
 import org.embulk.filter.copy.service.StandardColumnVisitor;
 import org.embulk.spi.Exec;
@@ -39,7 +41,8 @@ public class CopyFilterPlugin
     }
 
     public interface PluginTask
-            extends Task, TimestampFormatter.Task, OutForwardService.Task
+            extends Task, TimestampFormatter.Task,
+            OutForwardService.Task, InForwardService.Task
     {
         @Config("config")
         EmbulkConfig getConfig();
@@ -51,17 +54,20 @@ public class CopyFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
         ConfigSource inputConfig = Exec.newConfigSource();
-        inputConfig.set("type", "internal_forward");
+        inputConfig.set("type", InternalForwardInputPlugin.PLUGIN_NAME);
         inputConfig.set("columns", inputSchema);
+        inputConfig.set("message_tag", task.getMessageTag());
+        inputConfig.set("shutdown_tag", task.getShutdownTag());
+        inputConfig.set("in_forward", task.getInForwardTask());
         inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
         inputConfig.set("default_timezone", task.getDefaultTimeZone());
 
-        ConfigSource anotherConfig = Exec.newConfigSource();
-        anotherConfig.set("in", inputConfig);
-        anotherConfig.set("filters", task.getConfig().getFilterConfig());
-        anotherConfig.set("out", task.getConfig().getOutputConfig());
+        ConfigSource embulkRunConfig = Exec.newConfigSource();
+        embulkRunConfig.set("in", inputConfig);
+        embulkRunConfig.set("filters", task.getConfig().getFilterConfig());
+        embulkRunConfig.set("out", task.getConfig().getOutputConfig());
         EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(Exec.getInjector());
-        embulkExecutorService.executeAsync(anotherConfig);
+        embulkExecutorService.executeAsync(embulkRunConfig);
 
         Schema outputSchema = inputSchema;
 
