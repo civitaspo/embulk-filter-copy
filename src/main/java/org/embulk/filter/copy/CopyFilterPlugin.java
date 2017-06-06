@@ -32,6 +32,10 @@ public class CopyFilterPlugin
     public interface EmbulkConfig
             extends Task
     {
+        @Config("exec")
+        @ConfigDefault("{}")
+        ConfigSource getExecConfig();
+
         @Config("filters")
         @ConfigDefault("[]")
         List<ConfigSource> getFilterConfig();
@@ -48,14 +52,11 @@ public class CopyFilterPlugin
         EmbulkConfig getConfig();
     }
 
-    @Override
-    public void transaction(ConfigSource config, Schema inputSchema,
-            FilterPlugin.Control control)
+    private ConfigSource configure(PluginTask task, Schema schema)
     {
-        PluginTask task = config.loadConfig(PluginTask.class);
         ConfigSource inputConfig = Exec.newConfigSource();
         inputConfig.set("type", InternalForwardInputPlugin.PLUGIN_NAME);
-        inputConfig.set("columns", inputSchema);
+        inputConfig.set("columns", schema);
         inputConfig.set("message_tag", task.getMessageTag());
         inputConfig.set("shutdown_tag", task.getShutdownTag());
         inputConfig.set("in_forward", task.getInForwardTask());
@@ -63,21 +64,38 @@ public class CopyFilterPlugin
         inputConfig.set("default_timezone", task.getDefaultTimeZone());
 
         ConfigSource embulkRunConfig = Exec.newConfigSource();
+        embulkRunConfig.set("exec", task.getConfig().getExecConfig());
         embulkRunConfig.set("in", inputConfig);
         embulkRunConfig.set("filters", task.getConfig().getFilterConfig());
         embulkRunConfig.set("out", task.getConfig().getOutputConfig());
+
+        return embulkRunConfig;
+    }
+
+    private void withEmbulkRun(ConfigSource config, Runnable r)
+    {
         EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(Exec.getInjector());
-        embulkExecutorService.executeAsync(embulkRunConfig);
+        embulkExecutorService.executeAsync(config);
 
-        Schema outputSchema = inputSchema;
-
-        control.run(task.dump(), outputSchema);
-
-        OutForwardService.sendShutdownMessage(task);
+        r.run();
 
         embulkExecutorService.waitExecutionFinished();
         embulkExecutorService.shutdown();
-        logger.info("filter-copy: transaction finished.");
+    }
+
+    @Override
+    public void transaction(ConfigSource config, Schema inputSchema,
+            FilterPlugin.Control control)
+    {
+        PluginTask task = config.loadConfig(PluginTask.class);
+        ConfigSource embulkRunConfig = configure(task, inputSchema);
+
+        withEmbulkRun(embulkRunConfig, () ->
+        {
+            Schema outputSchema = inputSchema;
+            control.run(task.dump(), outputSchema);
+            OutForwardService.sendShutdownMessage(task);
+        });
     }
 
     @Override
