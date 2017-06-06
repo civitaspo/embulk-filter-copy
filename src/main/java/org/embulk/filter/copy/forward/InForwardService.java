@@ -7,6 +7,7 @@ import influent.forward.ForwardCallback;
 import influent.forward.ForwardServer;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
+import org.embulk.filter.copy.util.ElapsedTime;
 import org.embulk.spi.Exec;
 import org.slf4j.Logger;
 
@@ -183,43 +184,16 @@ public class InForwardService
 
     public void runUntilShouldShutdown()
     {
-        long startMillis = System.currentTimeMillis();
-        logger.info("in_forward server start");
         server.start();
-
-        while (!shouldShutdown.get()) {
-            logger.info("in_forward server is running. (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
-
-            try {
-                Thread.sleep(1000L);
-            }
-            catch (InterruptedException e) {
-                logger.warn(e.getMessage(), e);
-            }
-        }
-
+        ElapsedTime.debugUntil(shouldShutdown::get, logger, "in_forward server", 1000L);
         shutdown();
     }
 
     private void shutdown()
     {
-        long startMillis = System.currentTimeMillis();
-        logger.info("in_forward server start to shut down");
-        logger.info("first, callback is shutting down. (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
-        callbackThread.shutdown();
-        logger.info("callback finish to shut down (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
-
+        ElapsedTime.debug(logger, "shutdown in_forward callback", callbackThread::shutdown);
         CompletableFuture<Void> shutdown = server.shutdown();
-
-        while (!(shutdown.isCancelled() || shutdown.isCompletedExceptionally() || shutdown.isDone())) {
-            logger.info("in_forward server is shutting down. (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
-            try {
-                Thread.sleep(1000L);
-            }
-            catch (InterruptedException e) {
-                logger.warn(e.getMessage(), e);
-            }
-        }
-        logger.info("in_forward server finish to shut down. (Elapsed: {}ms)", System.currentTimeMillis() - startMillis);
+        ElapsedTime.debugUntil(() -> shutdown.isCancelled() || shutdown.isCompletedExceptionally() || shutdown.isDone(),
+                logger, "shutdown in_forward server", 1000L);
     }
 }

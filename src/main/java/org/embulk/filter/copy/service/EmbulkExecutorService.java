@@ -10,6 +10,7 @@ import org.embulk.EmbulkEmbed;
 import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
 import org.embulk.exec.ExecutionResult;
+import org.embulk.filter.copy.util.ElapsedTime;
 import org.embulk.guice.LifeCycleInjector;
 import org.embulk.spi.Exec;
 import org.slf4j.Logger;
@@ -37,6 +38,9 @@ public class EmbulkExecutorService
     public void executeAsync(final ConfigSource config)
     {
         logger.info("execute with this config: {}", config);
+        if (future != null) {
+            throw new IllegalStateException("executeAsync is already called.");
+        }
         future = es.submit(embulkRun(config));
         Futures.addCallback(future, resultFutureCallback());
     }
@@ -53,15 +57,12 @@ public class EmbulkExecutorService
 
     public void waitExecutionFinished()
     {
-        while (!(future.isDone() || future.isCancelled())) {
-            logger.info("all exec are not finished yet.");
-            try {
-                Thread.sleep(3000L); // 3 seconds
-            }
-            catch (InterruptedException e) {
-                logger.warn("Sleep failed", e);
-            }
+        if (future == null) {
+            throw new NullPointerException();
         }
+
+        ElapsedTime.debugUntil(() -> future.isDone() || future.isCancelled(),
+                logger, "embulk executor", 3000L);
     }
 
     private Callable<ExecutionResult> embulkRun(ConfigSource config)
