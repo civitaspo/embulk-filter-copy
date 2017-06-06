@@ -14,14 +14,14 @@ configurations {
     provided
 }
 
-version = "0.1.0"
+version = "0.0.1"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
 dependencies {
-    compile  "org.embulk:embulk-core:0.8.21"
-    provided "org.embulk:embulk-core:0.8.21"
+    compile  "org.embulk:embulk-core:0.8.23"
+    provided "org.embulk:embulk-core:0.8.23"
     compile  "com.okumin:influent-java:0.2.+"
     // The latest version of fluency is 1.3.0, but
     // This plugin use 1.1.0 for using the same msgpack version as embulk.
@@ -82,7 +82,7 @@ Gem::Specification.new do |spec|
   spec.version       = "${project.version}"
   spec.authors       = ["Civitaspo"]
   spec.summary       = %[Copy filter plugin for Embulk]
-  spec.description   = %[Copy]
+  spec.description   = %[Copy records and run another embulk by using them as input data source.]
   spec.email         = ["civitaspo@gmail.com"]
   spec.licenses      = ["MIT"]
   spec.homepage      = "https://github.com/civitaspo/embulk-filter-copy"
@@ -91,7 +91,10 @@ Gem::Specification.new do |spec|
   spec.test_files    = spec.files.grep(%r"^(test|spec)/")
   spec.require_paths = ["lib"]
 
-  #spec.add_dependency 'YOUR_GEM_DEPENDENCY', ['~> YOUR_GEM_DEPENDENCY_VERSION']
+  unless ENV_JAVA['java.specification.version'] >= '1.8'
+    warn "[WARN] `embulk-filter-copy` plugin requires 'java.specification.version' >= 1.8, but currently #{ENV_JAVA['java.specification.version']}."
+  end
+
   spec.add_development_dependency 'bundler', ['~> 1.0']
   spec.add_development_dependency 'rake', ['>= 10.0']
 end
