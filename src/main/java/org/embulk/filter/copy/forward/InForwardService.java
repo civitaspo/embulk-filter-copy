@@ -61,14 +61,6 @@ public class InForwardService
         @ConfigDefault("{}")
         InForwardTask getInForwardTask();
 
-        @Config("thread_name")
-        @ConfigDefault("\"embulk-input-copy\"")
-        String getThreadName();
-
-        @Config("num_threads")
-        @ConfigDefault("1")
-        int getNumThreads();
-
         @Config("shutdown_tag")
         @ConfigDefault("\"shutdown\"")
         String getShutdownTag();
@@ -110,6 +102,10 @@ public class InForwardService
         return new Builder();
     }
 
+    // TODO: configure?
+    private static final String THREAD_NAME = "InForwardService";
+    private static final int NUM_THREADS = 1;
+
     private final Task task;
     private final ForwardServer server;
     private final ExecutorService callbackThread;
@@ -119,8 +115,8 @@ public class InForwardService
     {
         this.task = task;
         this.callbackThread = Executors.newFixedThreadPool(
-                task.getNumThreads(),
-                r -> new Thread(r, task.getThreadName()));
+                NUM_THREADS,
+                r -> new Thread(r, THREAD_NAME));
         this.server = buildServer(task.getInForwardTask(), eventConsumer, callbackThread);
     }
 
