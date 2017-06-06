@@ -1,16 +1,17 @@
 package org.embulk.filter.copy;
 
-import com.google.common.collect.Maps;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.plugin.common.DefaultColumnVisitor;
-import org.embulk.service.EmbulkExecutorService;
-import org.embulk.service.PageCopyService;
-import org.embulk.spi.Column;
-import org.embulk.spi.ColumnVisitor;
+import org.embulk.filter.copy.forward.InForwardService;
+import org.embulk.filter.copy.forward.OutForwardEventBuilder;
+import org.embulk.filter.copy.forward.OutForwardService;
+import org.embulk.filter.copy.forward.OutForwardVisitor;
+import org.embulk.filter.copy.plugin.InternalForwardInputPlugin;
+import org.embulk.filter.copy.service.EmbulkExecutorService;
+import org.embulk.filter.copy.service.StandardColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
@@ -19,12 +20,9 @@ import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
 import org.embulk.spi.time.TimestampFormatter;
-import org.komamitsu.fluency.Fluency;
 import org.slf4j.Logger;
 
-import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 public class CopyFilterPlugin
         implements FilterPlugin
@@ -34,6 +32,10 @@ public class CopyFilterPlugin
     public interface EmbulkConfig
             extends Task
     {
+        @Config("exec")
+        @ConfigDefault("{}")
+        ConfigSource getExecConfig();
+
         @Config("filters")
         @ConfigDefault("[]")
         List<ConfigSource> getFilterConfig();
@@ -43,10 +45,42 @@ public class CopyFilterPlugin
     }
 
     public interface PluginTask
-            extends Task, TimestampFormatter.Task
+            extends Task, TimestampFormatter.Task,
+            OutForwardService.Task, InForwardService.Task
     {
         @Config("config")
         EmbulkConfig getConfig();
+    }
+
+    private ConfigSource configure(PluginTask task, Schema schema)
+    {
+        ConfigSource inputConfig = Exec.newConfigSource();
+        inputConfig.set("type", InternalForwardInputPlugin.PLUGIN_NAME);
+        inputConfig.set("columns", schema);
+        inputConfig.set("message_tag", task.getMessageTag());
+        inputConfig.set("shutdown_tag", task.getShutdownTag());
+        inputConfig.set("in_forward", task.getInForwardTask());
+        inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
+        inputConfig.set("default_timezone", task.getDefaultTimeZone());
+
+        ConfigSource embulkRunConfig = Exec.newConfigSource();
+        embulkRunConfig.set("exec", task.getConfig().getExecConfig());
+        embulkRunConfig.set("in", inputConfig);
+        embulkRunConfig.set("filters", task.getConfig().getFilterConfig());
+        embulkRunConfig.set("out", task.getConfig().getOutputConfig());
+
+        return embulkRunConfig;
+    }
+
+    private void withEmbulkRun(ConfigSource config, Runnable r)
+    {
+        EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(Exec.getInjector());
+        embulkExecutorService.executeAsync(config);
+
+        r.run();
+
+        embulkExecutorService.waitExecutionFinished();
+        embulkExecutorService.shutdown();
     }
 
     @Override
@@ -54,31 +88,15 @@ public class CopyFilterPlugin
             FilterPlugin.Control control)
     {
         PluginTask task = config.loadConfig(PluginTask.class);
+        ConfigSource embulkRunConfig = configure(task, inputSchema);
 
-        ConfigSource inputConfig = Exec.newConfigSource();
-        inputConfig.set("type", "influent");
-        inputConfig.set("columns", inputSchema);
-        inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
-        inputConfig.set("default_timezone", task.getDefaultTimeZone());
-
-        ConfigSource anotherConfig = Exec.newConfigSource();
-        anotherConfig.set("in", inputConfig);
-        anotherConfig.set("filters", task.getConfig().getFilterConfig());
-        anotherConfig.set("out", task.getConfig().getOutputConfig());
-
-        final EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(1, Exec.getInjector());
-        embulkExecutorService.executeAsync(anotherConfig);
-
-        Schema outputSchema = inputSchema;
-
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            embulkExecutorService.waitExecutionFinished();
-            embulkExecutorService.shutdown();
-        }));
-
-        control.run(task.dump(), outputSchema);
+        withEmbulkRun(embulkRunConfig, () ->
+        {
+            Schema outputSchema = inputSchema;
+            control.run(task.dump(), outputSchema);
+            OutForwardService.sendShutdownMessage(task);
+        });
     }
-
 
     @Override
     public PageOutput open(TaskSource taskSource, final Schema inputSchema,
@@ -94,77 +112,20 @@ public class CopyFilterPlugin
         {
             private final PageReader pageReader = new PageReader(inputSchema);
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
-            private final ColumnVisitor visitor = new DefaultColumnVisitor(pageReader, pageBuilder);
-            private final Fluency fluency = getFluency();
+            private final StandardColumnVisitor standardColumnVisitor = new StandardColumnVisitor(pageReader, pageBuilder);
+            private final OutForwardService outForwardService = new OutForwardService(task);
+            private final OutForwardEventBuilder eventBuilder = new OutForwardEventBuilder(outputSchema, timestampFormatter);
+            private final OutForwardVisitor outForwardVisitor = new OutForwardVisitor(pageReader, eventBuilder);
 
             @Override
             public void add(Page page)
             {
-                logger.info("enqueue!!!");
-                Page newPage = PageCopyService.copy(page);
-                pageReader.setPage(newPage);
-                while (pageReader.nextRecord()) {
-                    Map<String, Object> event = Maps.newHashMap();
-                    outputSchema.visitColumns(new ColumnVisitor() {
-                        @Override
-                        public void booleanColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getBoolean(column)));
-                        }
-
-                        @Override
-                        public void longColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getLong(column)));
-                        }
-
-                        @Override
-                        public void doubleColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getDouble(column)));
-                        }
-
-                        @Override
-                        public void stringColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), pageReader.getString(column)));
-                        }
-
-                        @Override
-                        public void timestampColumn(Column column)
-                        {
-                            unlessNull(column, () -> event.put(column.getName(), timestampFormatter.format(pageReader.getTimestamp(column))));
-                        }
-
-                        @Override
-                        public void jsonColumn(Column column)
-                        {
-                            unlessNull(column, () -> {
-                                event.put(column.getName(), pageReader.getJson(column).toJson()); // TODO: explain why `toJson` is required.
-                            });
-                        }
-
-                        private void unlessNull(Column column, Runnable runnable)
-                        {
-                            if (pageReader.isNull(column)) {
-                                event.put(column.getName(), null);
-                                return;
-                            }
-                            runnable.run();
-                        }
-                    });
-                    try {
-                        fluency.emit("embulk", event);
-                    }
-                    catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-
                 pageReader.setPage(page);
-
                 while (pageReader.nextRecord()) {
-                    outputSchema.visitColumns(visitor);
+                    outputSchema.visitColumns(outForwardVisitor);
+                    eventBuilder.emitMessage(outForwardService);
+
+                    outputSchema.visitColumns(standardColumnVisitor);
                     pageBuilder.addRecord();
                 }
             }
@@ -172,36 +133,17 @@ public class CopyFilterPlugin
             @Override
             public void finish()
             {
-                try {
-                    fluency.flush();
-                }
-                catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                outForwardService.finish();
                 pageBuilder.finish();
             }
 
             @Override
             public void close()
             {
-                try {
-                    fluency.close();
-                }
-                catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                outForwardService.close();
                 pageBuilder.close();
             }
 
-            private Fluency getFluency()
-            {
-                try {
-                    return Fluency.defaultFluency();
-                }
-                catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
         };
     }
 }

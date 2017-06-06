@@ -12,10 +12,17 @@ in:
       - { name: name, type: string }
       - { name: payload, type: json}
     stop_on_invalid_record: true
+
 filters:
   - type: copy
     config:
+      filters:
+        - type: remove_columns
+          remove: ["id"]
       out:
         type: stdout
+      exec:
+        max_threads: 8
+
 out:
   type: stdout
