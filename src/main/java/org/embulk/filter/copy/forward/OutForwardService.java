@@ -21,12 +21,10 @@ public class OutForwardService
         @Config("host")
         @ConfigDefault("\"localhost\"")
         String getHost();
-        void setHost(String host);
 
         @Config("port")
         @ConfigDefault("24224")
         int getPort();
-        void setPort(int port);
 
         @Config("max_buffer_size")
         @ConfigDefault("null")

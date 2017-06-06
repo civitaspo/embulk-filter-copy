@@ -95,7 +95,7 @@ public class InForwardService
     }
 
     // TODO: configure?
-    private static final String THREAD_NAME = "InForwardService";
+    private static final String THREAD_NAME = "in_forward";
     private static final int NUM_THREADS = 1;
 
     private final Task task;

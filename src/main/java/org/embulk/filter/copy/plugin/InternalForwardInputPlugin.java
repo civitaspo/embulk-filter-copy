@@ -21,7 +21,6 @@ import org.embulk.spi.time.TimestampParser;
 import org.slf4j.Logger;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class InternalForwardInputPlugin
         implements InputPlugin
@@ -65,7 +64,6 @@ public class InternalForwardInputPlugin
             Schema schema, int taskCount,
             List<TaskReport> successTaskReports)
     {
-        logger.info("input-copy: cleanup");
     }
 
     @Override

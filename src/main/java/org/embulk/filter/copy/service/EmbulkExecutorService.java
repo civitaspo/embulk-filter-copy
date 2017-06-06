@@ -24,6 +24,8 @@ import java.util.concurrent.Executors;
 
 public class EmbulkExecutorService
 {
+    private final static String THREAD_NAME = "embulk executor service";
+    private static final int NUM_THREADS = 1;
     private final static Logger logger = Exec.getLogger(EmbulkExecutorService.class);
     private final Injector injector;
     private final ListeningExecutorService es;
@@ -32,12 +34,16 @@ public class EmbulkExecutorService
     public EmbulkExecutorService(Injector injector)
     {
         this.injector = injector;
-        this.es = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(1, r -> new Thread(r, "embulk-executor-service")));
+        this.es = MoreExecutors.listeningDecorator(
+                Executors.newFixedThreadPool(
+                        NUM_THREADS,
+                        r -> new Thread(r, THREAD_NAME)
+                ));
     }
 
-    public void executeAsync(final ConfigSource config)
+    public void executeAsync(ConfigSource config)
     {
-        logger.info("execute with this config: {}", config);
+        logger.debug("execute with this config: {}", config);
         if (future != null) {
             throw new IllegalStateException("executeAsync is already called.");
         }
@@ -47,12 +53,10 @@ public class EmbulkExecutorService
 
     public void shutdown()
     {
-        logger.info("embulk embed shutdown start");
-        if (!es.isShutdown()) {
-            logger.info("embulk embed shutdown...");
-            es.shutdown();
-        }
-        logger.info("embulk embed shutdown finished");
+        ElapsedTime.info(
+                logger,
+                "embulk executor service shutdown",
+                es::shutdown);
     }
 
     public void waitExecutionFinished()

@@ -1,6 +1,5 @@
 package org.embulk.filter.copy.util;
 
-import org.embulk.spi.Exec;
 import org.slf4j.Logger;
 
 import java.util.function.Supplier;
