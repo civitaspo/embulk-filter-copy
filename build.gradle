@@ -15,7 +15,7 @@ configurations {
     provided
 }
 
-group = "org.embulk.input.ftp"
+group = "io.github.civitaspo"
 version = "0.0.3.pre"
 
 sourceCompatibility = 1.8
@@ -48,7 +48,7 @@ task pluginJar(type: Jar) {
 
     manifest {
         attributes 'Embulk-Plugin-Spi-Version': "0",
-                   'Embulk-Plugin-Main-Class': "org.embulk.input.FtpFileInputPlugin",
+                   'Embulk-Plugin-Main-Class': "org.embulk.filter.copy.CopyFilterPlugin",
                    'Implementation-Title': project.name,
                    'Implementation-Version': version
     }
