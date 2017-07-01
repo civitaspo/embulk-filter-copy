@@ -2,6 +2,7 @@ plugins {
     id "com.jfrog.bintray" version "1.1"
     id "com.github.jruby-gradle.base" version "0.1.5"
     id "java"
+    id "maven"
     id "checkstyle"
 }
 
@@ -14,7 +15,8 @@ configurations {
     provided
 }
 
-version = "0.0.2"
+group = "io.github.civitaspo"
+version = "0.0.3.pre"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -32,9 +34,124 @@ dependencies {
     testCompile "org.embulk:embulk-core:0.8.23:tests"
 }
 
-task classpath(type: Copy, dependsOn: ["jar"]) {
+// EXPERIMENTAL: Builds a JAR-based plugin file with dependencies embedded.
+task pluginJar(type: Jar) {
+    destinationDir = file("pkg")
+
+    configurations {
+        pluginJarArtifact
+    }
+
+    artifacts {
+        pluginJarArtifact file: pluginJar.archivePath, builtBy: pluginJar
+    }
+
+    manifest {
+        attributes 'Embulk-Plugin-Spi-Version': "0",
+                   'Embulk-Plugin-Main-Class': "org.embulk.filter.copy.CopyFilterPlugin",
+                   'Implementation-Title': project.name,
+                   'Implementation-Version': version
+    }
+
+    from {
+        // "provided" dependencies are excluded as they are provided at runtime by the Embulk core.
+        def embedded = configurations.runtime - configurations.provided
+
+        // Dependencies are picked up with extracting ".jar" files.
+        embedded.collect { ( it.isFile() && it.name.endsWith(".jar") ) ? zipTree(it) : it }
+    }
+
+    // Signature files of dependencies are excluded as they cause SecurityException.
+    exclude("META-INF/*.DSA")
+    exclude("META-INF/*.RSA")
+    exclude("META-INF/*.SF")
+
+    with jar
+}
+clean { delete "pkg" }
+
+def cleanupPomInPluginJar = {
+    // All dependencies except for "org.embulk:embulk-core" are removed.
+    whenConfigured { pom ->
+        pom.dependencies = pom.dependencies.findAll { dependency ->
+            ( dependency.groupId == "org.embulk" && dependency.artifactId == "embulk-core" )
+        }
+    }
+
+    // The dependency "org.embulk:embulk-core" is "provided" for plugin JARs.
+    whenConfigured { pom ->
+        pom.dependencies.find { dependency ->
+            ( dependency.groupId == "org.embulk" && dependency.artifactId == "embulk-core" )
+        }.scope = "runtime"
+    }
+}
+
+// EXPERIMENTAL: Uploads the JAR-based plugin build in "pluginJar".
+task uploadPluginJar(type: Upload) {
+    configuration = configurations.pluginJarArtifact
+
+    repositories {
+        mavenDeployer {
+            configurations {
+                pluginJarDeployer
+            }
+
+            dependencies {
+                pluginJarDeployer "net.trajano.wagon:wagon-git:2.0.4"
+            }
+
+            configuration = configurations.pluginJarDeployer
+
+            // "gradle assemble" fails at "getProperty" if the properties are not defined.
+            if (project.hasProperty("io.github.civitaspo.username") &&
+                project.hasProperty("io.github.civitaspo.access_token")) {
+                repository(url: "git:https://github.com/civitaspo/embulk-filter-copy.git?gh-pages#") {
+                    // Set your GitHub username and personal access token in your ~/.gradle/gradle.properties.
+                    // Do not set your GitHub main password!
+                    authentication(userName: project.getProperty("io.github.civitaspo.username"),
+                                   password: project.getProperty("io.github.civitaspo.access_token"))
+                }
+            }
+
+            pom cleanupPomInPluginJar
+        }
+    }
+}
+
+// EXPERIMENTAL: Installs the JAR-based plugin in the local Maven repository.
+//
+// It should be optional per plugin because the pre-defined "install" task is global in build.gradle.
+// Each plugin would choose to use this "install" task or not.
+//
+// JitPack uses the "install" task to build and publish artifacts by JitPack themselves.
+// This "install" task may work for plugins which use JitPack to distribute.
+// https://jitpack.io/docs/BUILDING/#gradle-projects
+install {
+    configuration = configurations.pluginJarArtifact
+
+    repositories {
+        mavenInstaller {
+            // TODO: Compare also by group, version, and classifier.
+            // They cannot be compared as |artifact| is |org.apache.ivy.core.module.descriptor.DefaultArtifact|,
+            // not |org.apache.maven.artifact.DefaultArtifact|, for Gradle's internal reasons.
+            // See org.gradle.api.publication.maven.internal.deployer.AbstractMavenResolver.
+            // https://github.com/gradle/gradle/blob/v3.5.1/subprojects/maven/src/main/java/org/gradle/api/publication/maven/internal/deployer/AbstractMavenResolver.java
+            addFilter("pluginJarFilter") { artifact, file -> artifact.name == project.name }
+            pom("pluginJarFilter", cleanupPomInPluginJar)
+        }
+    }
+}
+
+task gemJar(type: Jar) {
+    // JAR files, generated with the "gemJar" task, do not contain dependencies.
+    // The JAR files are contained in plugin gem files. They are named with "-nodep"
+    // such as: "embulk-input-example-X.Y.Z-nodep.jar"
+    classifier = "nodep"
+}
+
+task gemClasspath(type: Copy, dependsOn: ["gemJar"]) {
     doFirst { file("classpath").deleteDir() }
-    from (configurations.runtime - configurations.provided + files(jar.archivePath))
+    from (configurations.runtime - configurations.provided + files(gemJar.archivePath))
     into "classpath"
 }
 clean { delete "classpath" }
@@ -56,7 +173,7 @@ task checkstyle(type: Checkstyle) {
     source = sourceSets.main.allJava + sourceSets.test.allJava
 }
 
-task gem(type: JRubyExec, dependsOn: ["gemspec", "classpath"]) {
+task gem(type: JRubyExec, dependsOn: ["gemspec", "gemClasspath"]) {
     jrubyArgs "-rrubygems/gem_runner", "-eGem::GemRunner.new.run(ARGV)", "build"
     script "${project.name}.gemspec"
     doLast { ant.move(file: "${project.name}-${project.version}.gem", todir: "pkg") }
@@ -67,7 +184,7 @@ task gemPush(type: JRubyExec, dependsOn: ["gem"]) {
     script "pkg/${project.name}-${project.version}.gem"
 }
 
-task "package"(dependsOn: ["gemspec", "classpath"]) {
+task "package"(dependsOn: ["gemspec", "gemClasspath"]) {
     doLast {
         println "> Build succeeded."
         println "> You can run embulk with '-L ${file(".").absolutePath}' argument."
