@@ -53,7 +53,9 @@ $ embulk run example/config.yml -Ilib
 
 ### Run test:
 
-TBD
+```shell
+$ ./gradlew test
+```
 
 ### Release gem:
 Fix [build.gradle](./build.gradle), then
