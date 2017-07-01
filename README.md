@@ -34,6 +34,8 @@ filters:
 - This plugin has no test yet, so may have some bugs.
 - This plugin does not work on [embulk-executor-mapreduce](https://github.com/embulk/embulk-executor-mapreduce) yet.
 - This plugin uses lots of memory now, because embulk run twice.
+- Specification about error handling is not yet fixed.
+- If you have any problems or opinions, I'm glad if you raise Issue.
 
 ## Dependencies
 - https://github.com/okumin/influent

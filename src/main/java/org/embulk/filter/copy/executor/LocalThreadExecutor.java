@@ -1,39 +1,30 @@
-package org.embulk.filter.copy.service;
+package org.embulk.filter.copy.executor;
 
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
-import com.google.inject.Injector;
-import org.embulk.EmbulkEmbed;
-import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
 import org.embulk.exec.ExecutionResult;
 import org.embulk.filter.copy.util.ElapsedTime;
-import org.embulk.guice.LifeCycleInjector;
-import org.embulk.spi.Exec;
-import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 
-public class EmbulkExecutorService
+public class LocalThreadExecutor
+    extends EmbulkExecutor
 {
-    private final static String THREAD_NAME = "embulk executor service";
+    private static final String THREAD_NAME = "embulk executor service";
     private static final int NUM_THREADS = 1;
-    private final static Logger logger = Exec.getLogger(EmbulkExecutorService.class);
-    private final Injector injector;
     private final ListeningExecutorService es;
     private ListenableFuture<ExecutionResult> future;
 
-    public EmbulkExecutorService(Injector injector)
+    LocalThreadExecutor(ExecutorTask task)
     {
-        this.injector = injector;
+        super(task);
         this.es = MoreExecutors.listeningDecorator(
                 Executors.newFixedThreadPool(
                         NUM_THREADS,
@@ -41,6 +32,12 @@ public class EmbulkExecutorService
                 ));
     }
 
+    @Override
+    public void setup()
+    {
+    }
+
+    @Override
     public void executeAsync(ConfigSource config)
     {
         logger.debug("execute with this config: {}", config);
@@ -51,6 +48,17 @@ public class EmbulkExecutorService
         Futures.addCallback(future, resultFutureCallback());
     }
 
+    @Override
+    public void waitUntilExecutionFinished()
+    {
+        if (future == null) {
+            throw new NullPointerException();
+        }
+        ElapsedTime.debugUntil(() -> future.isDone() || future.isCancelled(),
+                logger, "embulk executor", 3000L);
+    }
+
+    @Override
     public void shutdown()
     {
         ElapsedTime.info(
@@ -59,32 +67,9 @@ public class EmbulkExecutorService
                 es::shutdown);
     }
 
-    public void waitExecutionFinished()
-    {
-        if (future == null) {
-            throw new NullPointerException();
-        }
-
-        ElapsedTime.debugUntil(() -> future.isDone() || future.isCancelled(),
-                logger, "embulk executor", 3000L);
-    }
-
     private Callable<ExecutionResult> embulkRun(ConfigSource config)
     {
-        return () -> newEmbulkEmbed(injector).run(config);
-    }
-
-    private EmbulkEmbed newEmbulkEmbed(Injector injector)
-    {
-        try {
-            Constructor<EmbulkEmbed> constructor = EmbulkEmbed.class
-                    .getDeclaredConstructor(ConfigSource.class, LifeCycleInjector.class);
-            constructor.setAccessible(true);
-            return constructor.newInstance(Exec.newConfigSource(), injector);
-        }
-        catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
-            throw new ConfigException(e);
-        }
+        return () -> newEmbulkEmbed().run(config);
     }
 
     private FutureCallback<ExecutionResult> resultFutureCallback()

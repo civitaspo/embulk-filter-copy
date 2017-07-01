@@ -5,13 +5,13 @@ import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
+import org.embulk.filter.copy.executor.EmbulkExecutor;
 import org.embulk.filter.copy.forward.InForwardService;
 import org.embulk.filter.copy.forward.OutForwardEventBuilder;
 import org.embulk.filter.copy.forward.OutForwardService;
 import org.embulk.filter.copy.forward.OutForwardVisitor;
 import org.embulk.filter.copy.plugin.InternalForwardInputPlugin;
-import org.embulk.filter.copy.service.EmbulkExecutorService;
-import org.embulk.filter.copy.service.StandardColumnVisitor;
+import org.embulk.filter.copy.util.StandardColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
@@ -45,7 +45,7 @@ public class CopyFilterPlugin
     }
 
     public interface PluginTask
-            extends Task, TimestampFormatter.Task,
+            extends Task, EmbulkExecutor.Task, TimestampFormatter.Task,
             OutForwardService.Task, InForwardService.Task
     {
         @Config("config")
@@ -72,15 +72,15 @@ public class CopyFilterPlugin
         return embulkRunConfig;
     }
 
-    private void withEmbulkRun(ConfigSource config, Runnable r)
+    private void withEmbulkRun(EmbulkExecutor executor, ConfigSource config, Runnable r)
     {
-        EmbulkExecutorService embulkExecutorService = new EmbulkExecutorService(Exec.getInjector());
-        embulkExecutorService.executeAsync(config);
+        executor.setup();
+        executor.executeAsync(config);
 
         r.run();
 
-        embulkExecutorService.waitExecutionFinished();
-        embulkExecutorService.shutdown();
+        executor.waitUntilExecutionFinished();
+        executor.shutdown();
     }
 
     @Override
@@ -89,11 +89,11 @@ public class CopyFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
         ConfigSource embulkRunConfig = configure(task, inputSchema);
+        EmbulkExecutor embulkExecutor = EmbulkExecutor.buildExecutor(task);
 
-        withEmbulkRun(embulkRunConfig, () ->
-        {
-            Schema outputSchema = inputSchema;
-            control.run(task.dump(), outputSchema);
+        withEmbulkRun(embulkExecutor, embulkRunConfig, () -> {
+            Schema outputSchema1 = inputSchema;
+            control.run(task.dump(), outputSchema1);
             OutForwardService.sendShutdownMessage(task);
         });
     }
