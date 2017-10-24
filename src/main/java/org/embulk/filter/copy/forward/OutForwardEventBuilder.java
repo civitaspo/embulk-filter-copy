@@ -142,6 +142,6 @@ public class OutForwardEventBuilder
     public void setJson(int columnIndex, Value v)
     {
         // TODO: confirm correct value is stored
-        setValue(columnIndex, v);
+        setValue(columnIndex, v.toJson());
     }
 }
