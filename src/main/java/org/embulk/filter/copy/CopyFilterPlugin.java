@@ -9,17 +9,16 @@ import org.embulk.filter.copy.executor.EmbulkExecutor;
 import org.embulk.filter.copy.forward.InForwardService;
 import org.embulk.filter.copy.forward.OutForwardEventBuilder;
 import org.embulk.filter.copy.forward.OutForwardService;
-import org.embulk.filter.copy.forward.OutForwardVisitor;
 import org.embulk.filter.copy.plugin.InternalForwardInputPlugin;
+import org.embulk.filter.copy.spi.PageBuilder;
+import org.embulk.filter.copy.spi.PageReader;
 import org.embulk.filter.copy.util.StandardColumnVisitor;
+import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
-import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
-import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
-import org.embulk.spi.time.TimestampFormatter;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -45,7 +44,7 @@ public class CopyFilterPlugin
     }
 
     public interface PluginTask
-            extends Task, EmbulkExecutor.Task, TimestampFormatter.Task,
+            extends Task, EmbulkExecutor.Task,
             OutForwardService.Task, InForwardService.Task
     {
         @Config("config")
@@ -60,8 +59,6 @@ public class CopyFilterPlugin
         inputConfig.set("message_tag", task.getMessageTag());
         inputConfig.set("shutdown_tag", task.getShutdownTag());
         inputConfig.set("in_forward", task.getInForwardTask());
-        inputConfig.set("default_timestamp_format", task.getDefaultTimestampFormat());
-        inputConfig.set("default_timezone", task.getDefaultTimeZone());
 
         ConfigSource embulkRunConfig = Exec.newConfigSource();
         embulkRunConfig.set("exec", task.getConfig().getExecConfig());
@@ -103,9 +100,6 @@ public class CopyFilterPlugin
             final Schema outputSchema, final PageOutput output)
     {
         final PluginTask task = taskSource.loadTask(PluginTask.class);
-        TimestampFormatter timestampFormatter = new TimestampFormatter(
-                task.getDefaultTimestampFormat(),
-                task.getDefaultTimeZone());
 
         return new PageOutput()
         {
@@ -113,8 +107,8 @@ public class CopyFilterPlugin
             private final PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
             private final StandardColumnVisitor standardColumnVisitor = new StandardColumnVisitor(pageReader, pageBuilder);
             private final OutForwardService outForwardService = new OutForwardService(task);
-            private final OutForwardEventBuilder eventBuilder = new OutForwardEventBuilder(outputSchema, timestampFormatter);
-            private final OutForwardVisitor outForwardVisitor = new OutForwardVisitor(pageReader, eventBuilder);
+            private final OutForwardEventBuilder eventBuilder = new OutForwardEventBuilder(outputSchema, outForwardService);
+            private final ColumnVisitor outForwardVisitor = new StandardColumnVisitor(pageReader, eventBuilder);
 
             @Override
             public void add(Page page)
@@ -122,7 +116,7 @@ public class CopyFilterPlugin
                 pageReader.setPage(page);
                 while (pageReader.nextRecord()) {
                     outputSchema.visitColumns(outForwardVisitor);
-                    eventBuilder.emitMessage(outForwardService);
+                    eventBuilder.addRecord();
 
                     outputSchema.visitColumns(standardColumnVisitor);
                     pageBuilder.addRecord();

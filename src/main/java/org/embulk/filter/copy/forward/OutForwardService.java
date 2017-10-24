@@ -64,7 +64,7 @@ public class OutForwardService
     }
 
     public interface Task
-            extends ForwardBaseTask
+            extends ForwardParentTask
     {
         @Config("out_forward")
         @ConfigDefault("{}")
@@ -73,7 +73,7 @@ public class OutForwardService
 
     public static void sendShutdownMessage(Task task)
     {
-        logger.info("out_forward: send shutdown message.");
+        logger.info("OutForwardService: Send a Shutdown Message.");
         OutForwardService outForward = new OutForwardService(task);
         outForward.emit(task.getShutdownTag(), Maps.newHashMap());
         outForward.finish();
