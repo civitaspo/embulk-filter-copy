@@ -20,8 +20,8 @@ sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
 dependencies {
-    compile  "org.embulk:embulk-core:0.8.23"
-    provided "org.embulk:embulk-core:0.8.23"
+    compile  "org.embulk:embulk-core:0.8.36"
+    provided "org.embulk:embulk-core:0.8.36"
     compile  "com.okumin:influent-java:0.2.+"
     // The latest version of fluency is 1.3.0, but
     // This plugin use 1.1.0 for using the same msgpack version as embulk.
@@ -29,7 +29,7 @@ dependencies {
     compile  "org.komamitsu:fluency:1.1.0"
 
     testCompile "junit:junit:4.+"
-    testCompile "org.embulk:embulk-core:0.8.23:tests"
+    testCompile "org.embulk:embulk-core:0.8.36:tests"
 }
 
 task classpath(type: Copy, dependsOn: ["jar"]) {
