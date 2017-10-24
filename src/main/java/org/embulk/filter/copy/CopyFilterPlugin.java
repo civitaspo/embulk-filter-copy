@@ -5,14 +5,15 @@ import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.filter.copy.executor.EmbulkExecutor;
 import org.embulk.filter.copy.forward.InForwardService;
 import org.embulk.filter.copy.forward.OutForwardEventBuilder;
 import org.embulk.filter.copy.forward.OutForwardService;
 import org.embulk.filter.copy.plugin.InternalForwardInputPlugin;
+import org.embulk.filter.copy.runner.AsyncEmbulkRunnerService;
+import org.embulk.filter.copy.runner.EmbulkRunner;
 import org.embulk.filter.copy.spi.PageBuilder;
 import org.embulk.filter.copy.spi.PageReader;
-import org.embulk.filter.copy.util.StandardColumnVisitor;
+import org.embulk.filter.copy.spi.StandardColumnVisitor;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
@@ -44,14 +45,13 @@ public class CopyFilterPlugin
     }
 
     public interface PluginTask
-            extends Task, EmbulkExecutor.Task,
-            OutForwardService.Task, InForwardService.Task
+            extends Task, OutForwardService.Task, InForwardService.Task
     {
         @Config("config")
         EmbulkConfig getConfig();
     }
 
-    private ConfigSource configure(PluginTask task, Schema schema)
+    private EmbulkRunner configure(PluginTask task, Schema schema)
     {
         ConfigSource inputConfig = Exec.newConfigSource();
         inputConfig.set("type", InternalForwardInputPlugin.PLUGIN_NAME);
@@ -60,24 +60,20 @@ public class CopyFilterPlugin
         inputConfig.set("shutdown_tag", task.getShutdownTag());
         inputConfig.set("in_forward", task.getInForwardTask());
 
-        ConfigSource embulkRunConfig = Exec.newConfigSource();
-        embulkRunConfig.set("exec", task.getConfig().getExecConfig());
-        embulkRunConfig.set("in", inputConfig);
-        embulkRunConfig.set("filters", task.getConfig().getFilterConfig());
-        embulkRunConfig.set("out", task.getConfig().getOutputConfig());
-
-        return embulkRunConfig;
+        return EmbulkRunner.builder()
+                .execConfig(task.getConfig().getExecConfig())
+                .inputConfig(inputConfig)
+                .filterConfig(task.getConfig().getFilterConfig())
+                .outputConfig(task.getConfig().getOutputConfig())
+                .build();
     }
 
-    private void withEmbulkRun(EmbulkExecutor executor, ConfigSource config, Runnable r)
+    private void withEmbulkRun(AsyncEmbulkRunnerService service, Runnable r)
     {
-        executor.setup();
-        executor.executeAsync(config);
-
+        service.startAsync();
+        service.awaitRunning();
         r.run();
-
-        executor.waitUntilExecutionFinished();
-        executor.shutdown();
+        service.awaitTerminated();
     }
 
     @Override
@@ -85,12 +81,12 @@ public class CopyFilterPlugin
             FilterPlugin.Control control)
     {
         PluginTask task = config.loadConfig(PluginTask.class);
-        ConfigSource embulkRunConfig = configure(task, inputSchema);
-        EmbulkExecutor embulkExecutor = EmbulkExecutor.buildExecutor(task);
+        EmbulkRunner embulkRunner = configure(task, inputSchema);
+        AsyncEmbulkRunnerService embulkRunnerService = new AsyncEmbulkRunnerService(embulkRunner);
 
-        withEmbulkRun(embulkExecutor, embulkRunConfig, () -> {
-            Schema outputSchema1 = inputSchema;
-            control.run(task.dump(), outputSchema1);
+        withEmbulkRun(embulkRunnerService, () -> {
+            Schema outputSchema = inputSchema;
+            control.run(task.dump(), outputSchema);
             OutForwardService.sendShutdownMessage(task);
         });
     }

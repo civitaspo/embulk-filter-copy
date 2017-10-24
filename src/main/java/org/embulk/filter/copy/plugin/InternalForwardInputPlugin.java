@@ -10,7 +10,7 @@ import org.embulk.config.TaskSource;
 import org.embulk.filter.copy.forward.InForwardEventReader;
 import org.embulk.filter.copy.forward.InForwardService;
 import org.embulk.filter.copy.spi.PageBuilder;
-import org.embulk.filter.copy.util.StandardColumnVisitor;
+import org.embulk.filter.copy.spi.StandardColumnVisitor;
 import org.embulk.spi.BufferAllocator;
 import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
