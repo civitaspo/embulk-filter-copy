@@ -104,7 +104,6 @@ public class CopyFilterPlugin
     {
         final PluginTask task = taskSource.loadTask(PluginTask.class);
         TimestampFormatter timestampFormatter = new TimestampFormatter(
-                task.getJRuby(),
                 task.getDefaultTimestampFormat(),
                 task.getDefaultTimeZone());
 

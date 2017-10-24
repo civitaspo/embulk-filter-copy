@@ -75,7 +75,6 @@ public class InternalForwardInputPlugin
 
         try (PageBuilder pageBuilder = new PageBuilder(task.getBufferAllocator(), schema, output)) {
             TimestampParser timestampParser = new TimestampParser(
-                    task.getJRuby(),
                     task.getDefaultTimestampFormat(),
                     task.getDefaultTimeZone());
             InForwardEventReader eventReader = new InForwardEventReader(schema, timestampParser);
