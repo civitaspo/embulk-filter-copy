@@ -10,6 +10,7 @@ in:
       - { name: id, type: long }
       - { name: description, type: string }
       - { name: name, type: string }
+      - { name: t, type: timestamp, format: "%Y-%m-%d %H:%M:%S %z"}
       - { name: payload, type: json}
     stop_on_invalid_record: true
 
