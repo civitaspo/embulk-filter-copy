@@ -4,7 +4,7 @@ import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.Task;
 
-public interface ForwardBaseTask
+public interface ForwardParentTask
     extends Task
 {
     @Config("shutdown_tag")

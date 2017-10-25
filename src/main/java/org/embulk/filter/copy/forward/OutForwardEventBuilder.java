@@ -1,135 +1,147 @@
 package org.embulk.filter.copy.forward;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.embulk.spi.Column;
 import org.embulk.spi.Schema;
 import org.embulk.spi.time.Timestamp;
-import org.embulk.spi.time.TimestampFormatter;
 import org.msgpack.value.Value;
+import org.embulk.filter.copy.spi.DataBuilder;
 
+import java.util.List;
 import java.util.Map;
 
 public class OutForwardEventBuilder
+        implements DataBuilder
 {
-    private final Schema schema;
-    private final TimestampFormatter timestampFormatter;
+    private final static String VALUES_KEY = "values";
 
-    private Map<String, Object> message;
+    private final Schema schema;
+    private final OutForwardService outForward;
+
+    private List<Object> values;
 
     public OutForwardEventBuilder(
             Schema schema,
-            TimestampFormatter timestampFormatter)
+            OutForwardService outForward)
     {
-
         this.schema = schema;
-        this.timestampFormatter = timestampFormatter;
+        this.outForward = outForward;
 
         setNewMessage();
     }
 
     private void setNewMessage()
     {
-        this.message = Maps.newHashMap();
+        this.values = Lists.newArrayListWithCapacity(schema.getColumnCount());
     }
 
-    public void emitMessage(OutForwardService outForward)
-    {
-        outForward.emit(message);
-        setNewMessage();
-    }
-
+    @Override
     public Schema getSchema()
     {
         return schema;
     }
 
-    private Column getColumn(int columnIndex)
+    @Override
+    public void addRecord()
     {
-        return getSchema().getColumn(columnIndex);
+        Map<String, Object> message = Maps.newHashMap();
+        message.put(VALUES_KEY, values);
+        outForward.emit(message);
+        setNewMessage();
     }
 
-    private void setValue(String columnName, Object value)
+    private void setValue(int columnIndex, Object v)
     {
-        message.put(columnName, value);
+        values.add(columnIndex, v);
     }
 
-    private void setValue(Column column, Object value)
-    {
-        setValue(column.getName(), value);
-    }
-
-    public void setValue(int columnIndex, Object value)
-    {
-        setValue(getColumn(columnIndex), value);
-    }
-
+    @Override
     public void setNull(Column column)
     {
-        setValue(column, null);
+        setNull(column.getIndex());
     }
 
-    private void setNull(int columnIndex)
+    @Override
+    public void setNull(int columnIndex)
     {
-        setNull(getColumn(columnIndex));
+        setValue(columnIndex, null);
     }
 
-    public void setBoolean(Column column, boolean value)
+    @Override
+    public void setBoolean(Column column, boolean v)
     {
-        setValue(column, value);
+        setBoolean(column.getIndex(), v);
     }
 
-    public void setBoolean(int columnIndex, boolean value)
+    @Override
+    public void setBoolean(int columnIndex, boolean v)
     {
-        setBoolean(getColumn(columnIndex), value);
+        setValue(columnIndex, v);
     }
 
-    public void setLong(Column column, long value)
+    @Override
+    public void setString(Column column, String v)
     {
-        setValue(column, value);
+        setString(column.getIndex(), v);
     }
 
-    public void setLong(int columnIndex, long value)
+    @Override
+    public void setString(int columnIndex, String v)
     {
-        setLong(getColumn(columnIndex), value);
+        setValue(columnIndex, v);
     }
 
-    public void setDouble(Column column, double value)
+    @Override
+    public void setLong(Column column, long v)
     {
-        setValue(column, value);
+        setLong(column.getIndex(), v);
     }
 
-    public void setDouble(int columnIndex, double value)
+    @Override
+    public void setLong(int columnIndex, long v)
     {
-        setDouble(getColumn(columnIndex), value);
+        setValue(columnIndex, v);
     }
 
-    public void setString(Column column, String value)
+    @Override
+    public void setDouble(Column column, double v)
     {
-        setValue(column, value);
+        setDouble(column.getIndex(), v);
     }
 
-    public void setString(int columnIndex, String value)
+    @Override
+    public void setDouble(int columnIndex, double v)
     {
-        setString(getColumn(columnIndex), value);
+        setValue(columnIndex, v);
     }
 
-    public void setTimestamp(Column column, Timestamp value)
+    @Override
+    public void setTimestamp(Column column, Timestamp v)
     {
-        setValue(column, timestampFormatter.format(value));
+
+        setTimestamp(column.getIndex(), v);
     }
 
-    public void setTimestamp(int columnIndex, Timestamp value)
+    @Override
+    public void setTimestamp(int columnIndex, Timestamp v)
     {
-        setTimestamp(getColumn(columnIndex), value);
+        // TODO: confirm correct value is stored
+        long epochSecond = v.getEpochSecond();
+        long nanoAdjustment = v.getNano();
+        setValue(columnIndex, new long[]{epochSecond, nanoAdjustment});
     }
 
-    public void setJson(Column column, Value value)
+    @Override
+    public void setJson(Column column, Value v)
     {
-        setValue(column, value.toJson());
+        setJson(column.getIndex(), v);
     }
 
-    public void setJson(int columnIndex, Value value)
+    @Override
+    public void setJson(int columnIndex, Value v)
     {
-        setJson(getColumn(columnIndex), value);
+        // TODO: confirm correct value is stored
+        setValue(columnIndex, v.toJson());
     }
 }

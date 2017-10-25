@@ -1,24 +1,25 @@
 package org.embulk.filter.copy.forward;
 
 import com.google.common.base.Optional;
+import com.google.common.util.concurrent.AbstractExecutionThreadService;
 import influent.EventStream;
 import influent.Tag;
 import influent.forward.ForwardCallback;
 import influent.forward.ForwardServer;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
-import org.embulk.filter.copy.util.ElapsedTime;
+import org.embulk.spi.DataException;
 import org.embulk.spi.Exec;
 import org.slf4j.Logger;
+import org.embulk.filter.copy.spi.ElapsedTime;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public class InForwardService
+        extends AbstractExecutionThreadService
 {
     private final static Logger logger = Exec.getLogger(InForwardService.class);
 
@@ -55,7 +56,7 @@ public class InForwardService
     }
 
     public interface Task
-            extends ForwardBaseTask
+            extends ForwardParentTask
     {
         @Config("in_forward")
         @ConfigDefault("{}")
@@ -94,30 +95,19 @@ public class InForwardService
         return new Builder();
     }
 
-    // TODO: configure?
-    private static final String THREAD_NAME = "in_forward";
-    private static final int NUM_THREADS = 1;
-
     private final Task task;
     private final ForwardServer server;
-    private final ExecutorService callbackThread;
     private final AtomicBoolean shouldShutdown = new AtomicBoolean(false);
 
     private InForwardService(Task task, Consumer<EventStream> eventConsumer)
     {
         this.task = task;
-        this.callbackThread = Executors.newFixedThreadPool(
-                NUM_THREADS,
-                r -> new Thread(r, THREAD_NAME));
-        this.server = buildServer(task.getInForwardTask(), eventConsumer, callbackThread);
+        this.server = buildServer(task.getInForwardTask(), eventConsumer);
     }
 
-    private ForwardServer buildServer(InForwardTask t, Consumer<EventStream> eventConsumer, Executor callbackThread)
+    private ForwardServer buildServer(InForwardTask t, Consumer<EventStream> eventConsumer)
     {
-        ForwardServer.Builder builder = new ForwardServer.Builder(
-                ForwardCallback.ofSyncConsumer(
-                        wrapEventConsumer(eventConsumer),
-                        callbackThread));
+        ForwardServer.Builder builder = new ForwardServer.Builder(wrapEventConsumer(eventConsumer));
 
         builder.localAddress(t.getPort());
 
@@ -139,25 +129,27 @@ public class InForwardService
         if (t.getTcpNoDelayEnabled().isPresent()) {
             builder.tcpNoDelayEnabled(t.getTcpNoDelayEnabled().get());
         }
+        // TODO: builder.workerPoolSize(1);
 
         return builder.build();
     }
 
-    private Consumer<EventStream> wrapEventConsumer(Consumer<EventStream> eventConsumer)
+    private ForwardCallback wrapEventConsumer(Consumer<EventStream> eventConsumer)
     {
-        return eventStream ->
+        return ForwardCallback.of(es ->
         {
-            if (isShutdownTag(eventStream.getTag())) {
-                logger.info("Receive shutdown tag: {}", eventStream.getTag());
+            if (isShutdownTag(es.getTag())) {
+                logger.info("Receive shutdown tag: {}", es.getTag());
                 shouldShutdown.set(true);
             }
-            else if (isMessageTag(eventStream.getTag())) {
-                eventConsumer.accept(eventStream);
+            else if (isMessageTag(es.getTag())) {
+                eventConsumer.accept(es);
             }
             else {
-                throw new RuntimeException(String.format("Unknown Tag received: %s", eventStream.getTag().getName()));
+                throw new DataException(String.format("Unknown Tag received: %s", es.getTag().getName()));
             }
-        };
+            return CompletableFuture.completedFuture(null);
+        });
     }
 
     private boolean isShutdownTag(Tag tag)
@@ -170,18 +162,93 @@ public class InForwardService
         return tag.getName().contentEquals(task.getMessageTag());
     }
 
-    public void runUntilShouldShutdown()
+    @Override
+    protected void startUp()
+            throws Exception
     {
         server.start();
-        ElapsedTime.debugUntil(shouldShutdown::get, logger, "in_forward server", 1000L);
-        shutdown();
     }
 
-    private void shutdown()
+    @Override
+    protected void shutDown()
+            throws Exception
     {
-        ElapsedTime.debug(logger, "shutdown in_forward callback", callbackThread::shutdown);
-        CompletableFuture<Void> shutdown = server.shutdown();
-        ElapsedTime.debugUntil(() -> shutdown.isCancelled() || shutdown.isCompletedExceptionally() || shutdown.isDone(),
-                logger, "shutdown in_forward server", 1000L);
+        ElapsedTime.measureWithPolling(new ElapsedTime.Pollable<Void>() {
+            private CompletableFuture<Void> future;
+
+            @Override
+            public boolean poll()
+            {
+                return future.isCancelled() || future.isCompletedExceptionally() || future.isDone();
+            }
+
+            @Override
+            public Void getResult()
+            {
+                try {
+                    return future.get();
+                }
+                catch (InterruptedException | ExecutionException e) {
+                    logger.warn("InForwardService: Server Shutdown is failed.", e);
+                    return null;
+                }
+            }
+
+            @Override
+            public void onStart()
+            {
+                logger.info("InForwardService: Server Shutdown Start.");
+                this.future = server.shutdown();
+            }
+
+            @Override
+            public void onWaiting(long elapsedMillis)
+            {
+                logger.info("InForwardService: Server Shutdown Running. (Elapsed: {} ms)", elapsedMillis);
+            }
+
+            @Override
+            public void onFinished(long elapsedMillis)
+            {
+                logger.info("InForwardService: Server Shutdown Finish. (Elapsed: {} ms)", elapsedMillis);
+            }
+        });
+    }
+
+    @Override
+    protected void run()
+            throws Exception
+    {
+        ElapsedTime.measureWithPolling(new ElapsedTime.Pollable<Void>() {
+            @Override
+            public boolean poll()
+            {
+                return shouldShutdown.get();
+            }
+
+            @Override
+            public Void getResult()
+            {
+                return null;
+            }
+
+            @Override
+            public void onStart()
+            {
+                logger.info("InForwardService: Server Start.");
+            }
+
+            @Override
+            public void onWaiting(long elapsedMillis)
+            {
+                logger.info("InForwardService: Server Running. (Elapsed: {} ms)", elapsedMillis);
+            }
+
+            @Override
+            public void onFinished(long elapsedMillis)
+            {
+                logger.info("InForwardService: Server Shutdown. (Elapsed: {} ms)", elapsedMillis);
+            }
+        });
     }
 }
