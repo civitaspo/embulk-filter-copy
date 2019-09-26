@@ -1,58 +1,31 @@
 package org.embulk.filter.copy.forward;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
+import com.google.common.collect.Lists;
 import influent.EventStream;
 import org.embulk.spi.Column;
 import org.embulk.spi.Schema;
-import org.embulk.spi.json.JsonParser;
 import org.embulk.spi.time.Timestamp;
-import org.embulk.spi.time.TimestampParser;
 import org.msgpack.value.Value;
+import org.embulk.filter.copy.spi.DataReader;
 
-import java.util.Map;
+import java.util.List;
+import java.util.Optional;
 
 public class InForwardEventReader
+        implements DataReader
 {
+    private final static String VALUES_KEY = "values";
+
     private final Schema schema;
-    private final Map<String, Column> columnMap;
-
-    private final JsonParser jsonParser = new JsonParser();
-    private final TimestampParser timestampParser;
-
     private EventStream event = null;
     private int eventMessageCount = 0;
 
     private int readCount = 0;
-    private Map<String, Value> message = Maps.newHashMap();
+    private List<Value> values;
 
-    public InForwardEventReader(Schema schema, TimestampParser timestampParser)
+    public InForwardEventReader(Schema schema)
     {
         this.schema = schema;
-        ImmutableMap.Builder<String, Column> builder = ImmutableMap.builder();
-        schema.getColumns().forEach(column -> builder.put(column.getName(), column));
-        this.columnMap = builder.build();
-        this.timestampParser = timestampParser;
-    }
-
-    public Schema getSchema()
-    {
-        return schema;
-    }
-
-    private Column getColumn(String columnName)
-    {
-        return columnMap.get(columnName);
-    }
-
-    private Column getColumn(int columnIndex)
-    {
-        return getSchema().getColumn(columnIndex);
-    }
-
-    private Value getValue(Column column)
-    {
-        return message.get(column.getName());
     }
 
     public void setEvent(EventStream event)
@@ -61,87 +34,119 @@ public class InForwardEventReader
         this.eventMessageCount = event.getEntries().size();
     }
 
-    public boolean isNull(Column column)
+    @Override
+    public Schema getSchema()
     {
-        return getValue(column).isNilValue();
+        return schema;
     }
 
-    public boolean isNull(int columnIndex)
-    {
-        return isNull(getColumn(columnIndex));
-    }
-
-    public boolean getBoolean(Column column)
-    {
-        return getValue(column).asBooleanValue().getBoolean();
-    }
-
-    public boolean getBoolean(int columnIndex)
-    {
-        return getBoolean(getColumn(columnIndex));
-    }
-
-    public long getLong(Column column)
-    {
-        return getValue(column).asIntegerValue().asLong();
-    }
-
-    public long getLong(int columnIndex)
-    {
-        return getLong(getColumn(columnIndex));
-    }
-
-    public double getDouble(Column column)
-    {
-        return getValue(column).asFloatValue().toDouble();
-    }
-
-    public double genDouble(int columnIndex)
-    {
-        return getDouble(getColumn(columnIndex));
-    }
-
-    public String getString(Column column)
-    {
-        return getValue(column).toString();
-    }
-
-    public String getString(int columnIndex)
-    {
-        return getString(getColumn(columnIndex));
-    }
-
-    public Timestamp getTimestamp(Column column)
-    {
-        return timestampParser.parse(getString(column));
-    }
-
-    public Timestamp getTimestamp(int columnIndex)
-    {
-        return getTimestamp(getColumn(columnIndex));
-    }
-
-    public Value getJson(Column column)
-    {
-        return jsonParser.parse(getString(column));
-    }
-
-    public Value getJson(int columnIndex)
-    {
-        return getJson(getColumn(columnIndex));
-    }
-
-    public boolean nextMessage()
+    @Override
+    public boolean nextRecord()
     {
         if (eventMessageCount <= readCount) {
             return false;
         }
 
-        ImmutableMap.Builder<String, Value> builder = ImmutableMap.builder();
-        event.getEntries().get(readCount++).getRecord().entrySet().forEach(
-                entry -> builder.put(entry.getKey().toString(), entry.getValue())
-        );
-        message = builder.build();
+        Optional<List<Value>> values = event.getEntries().get(readCount++).getRecord().entrySet()
+                .stream()
+                .filter(valueValueEntry -> valueValueEntry.getKey().asStringValue().asString().contentEquals(VALUES_KEY))
+                .map(valueValueEntry -> valueValueEntry.getValue().asArrayValue().list())
+                .findFirst();
+
+        this.values = values.orElse(Lists.newArrayListWithCapacity(schema.getColumnCount()));
         return true;
     }
+
+    private Value getValue(int columnIndex)
+    {
+        return values.get(columnIndex);
+    }
+
+    @Override
+    public boolean isNull(Column column)
+    {
+        return isNull(column.getIndex());
+    }
+
+    @Override
+    public boolean isNull(int columnIndex)
+    {
+        return getValue(columnIndex).isNilValue();
+    }
+
+    @Override
+    public boolean getBoolean(Column column)
+    {
+        return getBoolean(column.getIndex());
+    }
+
+    @Override
+    public boolean getBoolean(int columnIndex)
+    {
+        return getValue(columnIndex).asBooleanValue().getBoolean();
+    }
+
+    @Override
+    public String getString(Column column)
+    {
+        return getString(column.getIndex());
+    }
+
+    @Override
+    public String getString(int columnIndex)
+    {
+        return getValue(columnIndex).asStringValue().asString();
+    }
+
+    @Override
+    public long getLong(Column column)
+    {
+        return getLong(column.getIndex());
+    }
+
+    @Override
+    public long getLong(int columnIndex)
+    {
+        return getValue(columnIndex).asIntegerValue().asLong();
+    }
+
+    @Override
+    public double getDouble(Column column)
+    {
+        return getDouble(column.getIndex());
+    }
+
+    @Override
+    public double getDouble(int columnIndex)
+    {
+        return getValue(columnIndex).asFloatValue().toDouble();
+    }
+
+    @Override
+    public Timestamp getTimestamp(Column column)
+    {
+        return getTimestamp(column.getIndex());
+    }
+
+    @Override
+    public Timestamp getTimestamp(int columnIndex)
+    {
+        List<Value> seed = getValue(columnIndex).asArrayValue().list();
+        long epochSecond = seed.get(0).asIntegerValue().asLong();
+        long nanoAdjustment = seed.get(1).asIntegerValue().asLong();
+        return Timestamp.ofEpochSecond(epochSecond, nanoAdjustment);
+    }
+
+    @Override
+    public Value getJson(Column column)
+    {
+        return getJson(column.getIndex());
+    }
+
+    @Override
+    public Value getJson(int columnIndex)
+    {
+        return getValue(columnIndex);
+    }
+
 }

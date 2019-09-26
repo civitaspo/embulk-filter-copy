@@ -9,11 +9,12 @@ import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
 import org.embulk.filter.copy.forward.InForwardEventReader;
 import org.embulk.filter.copy.forward.InForwardService;
-import org.embulk.filter.copy.forward.InForwardVisitor;
+import org.embulk.filter.copy.spi.PageBuilder;
+import org.embulk.filter.copy.spi.StandardColumnVisitor;
 import org.embulk.spi.BufferAllocator;
+import org.embulk.spi.ColumnVisitor;
 import org.embulk.spi.Exec;
 import org.embulk.spi.InputPlugin;
-import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.Schema;
 import org.embulk.spi.SchemaConfig;
@@ -74,28 +75,25 @@ public class InternalForwardInputPlugin
         PluginTask task = taskSource.loadTask(PluginTask.class);
 
         try (PageBuilder pageBuilder = new PageBuilder(task.getBufferAllocator(), schema, output)) {
-            TimestampParser timestampParser = new TimestampParser(
-                    task.getJRuby(),
-                    task.getDefaultTimestampFormat(),
-                    task.getDefaultTimeZone());
-            InForwardEventReader eventReader = new InForwardEventReader(schema, timestampParser);
-            InForwardVisitor inForwardVisitor = new InForwardVisitor(eventReader, pageBuilder);
+            InForwardEventReader eventReader = new InForwardEventReader(schema);
+            ColumnVisitor inForwardVisitor = new StandardColumnVisitor(eventReader, pageBuilder);
 
-            InForwardService.builder()
+            InForwardService inForwardService = InForwardService.builder()
                     .task(task)
                     .forEachEventCallback(
                             event ->
                             {
                                 // TODO: here is not thread-safe
                                 eventReader.setEvent(event);
-                                while (eventReader.nextMessage()) {
+                                while (eventReader.nextRecord()) {
                                     schema.visitColumns(inForwardVisitor);
                                     pageBuilder.addRecord();
                                 }
                             }
                     )
-                    .build()
-                    .runUntilShouldShutdown();
+                    .build();
+
+            inForwardService.startAsync().awaitTerminated();
 
             pageBuilder.finish();
         }

@@ -2,6 +2,8 @@
 
 Copy records and run another embulk by using them as input data source.
 
+The Document for Japanese is [here](http://qiita.com/Civitaspo/items/da8483c28817071d90dc).
+
 ## Overview
 
 * **Plugin type**: filter
@@ -53,7 +55,9 @@ $ embulk run example/config.yml -Ilib
 
 ### Run test:
 
-TBD
+```shell
+$ ./gradlew test
+```
 
 ### Release gem:
 Fix [build.gradle](./build.gradle), then

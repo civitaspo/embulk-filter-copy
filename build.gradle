@@ -14,22 +14,23 @@ configurations {
     provided
 }
 
-version = "0.0.2"
+version = "0.1.0"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
 dependencies {
-    compile  "org.embulk:embulk-core:0.8.23"
-    provided "org.embulk:embulk-core:0.8.23"
-    compile  "com.okumin:influent-java:0.2.+"
+    compile  "org.embulk:embulk-core:0.9.18"
+    provided "org.embulk:embulk-core:0.9.18"
+    compile 'com.google.guava:guava:23.0'
     // The latest version of fluency is 1.3.0, but
     // This plugin use 1.1.0 for using the same msgpack version as embulk.
     // ref. https://github.com/komamitsu/fluency/compare/1.1.0...1.3.0
     compile  "org.komamitsu:fluency:1.1.0"
+    compile 'com.okumin:influent-java:0.3.0'
 
     testCompile "junit:junit:4.+"
-    testCompile "org.embulk:embulk-core:0.8.23:tests"
+    testCompile "org.embulk:embulk-core:0.9.18:tests"
 }
 
 task classpath(type: Copy, dependsOn: ["jar"]) {
