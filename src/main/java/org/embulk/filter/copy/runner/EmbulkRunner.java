@@ -1,14 +1,14 @@
 package org.embulk.filter.copy.runner;
 
 import com.google.common.collect.Lists;
+import com.google.inject.Injector;
 import org.embulk.EmbulkEmbed;
 import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigSource;
 import org.embulk.exec.ExecutionResult;
-import org.embulk.guice.LifeCycleInjector;
+import org.embulk.filter.copy.spi.ElapsedTime;
 import org.embulk.spi.Exec;
 import org.slf4j.Logger;
-import org.embulk.filter.copy.spi.ElapsedTime;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -88,7 +88,7 @@ public class EmbulkRunner
     {
         try {
             Constructor<EmbulkEmbed> constructor = EmbulkEmbed.class
-                    .getDeclaredConstructor(ConfigSource.class, LifeCycleInjector.class);
+                    .getDeclaredConstructor(ConfigSource.class, Injector.class);
             constructor.setAccessible(true);
             return constructor.newInstance(null, Exec.getInjector());
         }
