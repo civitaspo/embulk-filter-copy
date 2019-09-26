@@ -4,12 +4,10 @@ import com.google.common.collect.Lists;
 import org.embulk.EmbulkTestRuntime;
 import org.embulk.config.ConfigLoader;
 import org.embulk.config.ConfigSource;
-import org.embulk.filter.copy.executor.EmbulkExecutor.ExecutorTask;
 import org.embulk.spi.Exec;
 import org.embulk.spi.Schema;
 import org.embulk.spi.type.Type;
 import org.embulk.spi.type.Types;
-import org.joda.time.DateTimeZone;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -18,7 +16,6 @@ import org.junit.rules.ExpectedException;
 import static com.google.common.base.Optional.absent;
 import static org.embulk.filter.copy.CopyFilterPlugin.EmbulkConfig;
 import static org.embulk.filter.copy.CopyFilterPlugin.PluginTask;
-import static org.embulk.filter.copy.executor.EmbulkExecutor.ExecutorTask.ExecutorType.LOCAL_THREAD;
 import static org.embulk.filter.copy.forward.InForwardService.InForwardTask;
 import static org.embulk.filter.copy.forward.OutForwardService.OutForwardTask;
 import static org.junit.Assert.assertEquals;
@@ -72,14 +69,6 @@ public class TestCopyFilterPlugin
         EmbulkConfig embulkConfig = task.getConfig();
         assertEquals(Exec.newConfigSource(), embulkConfig.getExecConfig());
         assertEquals(Lists.<ConfigSource>newArrayList(), embulkConfig.getFilterConfig());
-
-        // EmbulkExecutor
-        ExecutorTask executorTask = task.getExecutorTask();
-        assertEquals(LOCAL_THREAD, executorTask.getType());
-
-        // TimestampFormatter
-        assertEquals(DateTimeZone.UTC, task.getDefaultTimeZone());
-        assertEquals("%Y-%m-%d %H:%M:%S.%6N %z", task.getDefaultTimestampFormat());
 
         // ForwardBaseTask
         assertEquals("message", task.getMessageTag());
