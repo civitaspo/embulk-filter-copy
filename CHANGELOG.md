@@ -1,5 +1,7 @@
-0.0.3 (xxxx-xx-xx)
+0.1.0 (2019-09-26)
 ==================
+* Follow embulk v0.9.x interfaces.
+* Packing as MessagePack become faster because, when parsing or formatting `Timestamp` values, use only `epochSecond` and `nanoAdjustment` instead of `TimestampFormatter` and `TimestampParser`.
 
 0.0.2 (2017-07-01)
 ==================
