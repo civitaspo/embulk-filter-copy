@@ -19,8 +19,6 @@ dependencies {
     compileOnly  "org.embulk:embulk-core:0.9.23"
     compile "org.scala-lang:scala-library:2.13.1"
 
-    // TODO: Remove this
-    testImplementation "junit:junit:4.+"
     testImplementation "org.embulk:embulk-deps-buffer:0.9.23"
     testImplementation "org.embulk:embulk-deps-config:0.9.23"
     testImplementation "org.embulk:embulk-core:0.9.23"
