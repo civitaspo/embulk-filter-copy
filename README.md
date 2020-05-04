@@ -10,11 +10,20 @@ The Document for Japanese is [here](http://qiita.com/Civitaspo/items/da8483c2881
 
 ## Configuration
 
-- **copy**: another embulk configurations except `in`. (array of config, optional)
+- **copy**: Another embulk configurations except `in`. (array of `CopyEmbulkConfig`, optional)
   - Either **copy** or **config** option is required.
   - When **config** option is removed, this option become a required option.
-- **config**: [DEPRECATED: Use **copy** option] another embulk configurations except `in`. (config, optional)
+- **config**: [DEPRECATED: Use **copy** option] Another embulk configurations except `in`. (`CopyEmbulkConfig`, optional)
   - ref. http://www.embulk.org/docs/built-in.html#embulk-configuration-file-format
+
+### Configuration for `CopyEmbulkConfig`
+
+- **name**: The name of the bulk load to copy. (string, optional)
+- **exec**: The embulk executor plugin configuration. (config, optional)
+  - **max_threads**: The maximum number of threads for that the bulk load runs concurrently. (int, default: The number of available CPU cores)
+- **filters**: The embulk filter plugin configurations. (array of config, default: `[]`)
+- **out**: The embulk output plugin configuration.
+
 
 ## Example
 
@@ -22,27 +31,20 @@ The Document for Japanese is [here](http://qiita.com/Civitaspo/items/da8483c2881
 filters:
   - type: copy
     copy:
-      - filters:
+      - name: copy-01
+        filters:
           - type: remove_columns
-            remove: ["id"]
+            remove: ["t"]
         out:
           type: stdout
-        exec:
-          max_threads: 8
-      - filters:
+      - exec:
+          max_threads: 4
+        filters:
           - type: remove_columns
-            remove: ["id"]
+            remove: ["payload"]
         out:
           type: stdout
-        exec:
-          max_threads: 8
 ```
-
-## Note
-
-- This plugin is **experimental** yet, so the specification may be changed.
-- If you have any problems or opinions, I'm glad if you raise an issue.
-
 
 ## Development
 
