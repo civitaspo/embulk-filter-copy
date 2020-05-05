@@ -48,7 +48,10 @@ class CopyFilterPlugin extends FilterPlugin {
       control: FilterPlugin.Control
   ): Unit = {
     val task = config.loadConfig(classOf[PluginTask])
-    task.getConfig.foreach(task.getCopy.add)
+    task.getConfig.foreach { cfg =>
+      logger.warn("[DEPRECATED] Use \"copy\" option instead.")
+      task.getCopy.add(cfg)
+    }
     if (task.getCopy.isEmpty)
       throw new ConfigException("Either 'copy' or 'config' option is required.")
     val transactionId: String = Utils.genTransactionId()
