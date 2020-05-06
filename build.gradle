@@ -67,6 +67,6 @@ gemPush {
 
 task scalatest(dependsOn: ['testClasses'], type: JavaExec) {
     main = 'org.scalatest.tools.Runner'
-    args = ['-R', 'build/classes/scala/test', '-o']
+    args = ['-R', 'build/classes/scala/test', '-oDF']
     classpath = sourceSets.test.runtimeClasspath
 }
