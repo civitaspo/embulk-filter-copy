@@ -1,6 +1,6 @@
 in:
   type: file
-  path_prefix: ./example/data.tsv
+  path_prefix: ./example/data
   parser:
     type: csv
     delimiter: "\t"
@@ -16,14 +16,24 @@ in:
 
 filters:
   - type: copy
-    config:
-      filters:
-        - type: remove_columns
-          remove: ["id"]
-      out:
-        type: stdout
-      exec:
-        max_threads: 8
+    copy:
+      - name: copy-01
+        filters:
+          - type: remove_columns
+            remove: ["t"]
+          - type: copy
+            copy:
+              - out:
+                  type: stdout
+        out:
+          type: stdout
+      - exec:
+          max_threads: 4
+        filters:
+          - type: remove_columns
+            remove: ["payload"]
+        out:
+          type: stdout
 
 out:
   type: stdout

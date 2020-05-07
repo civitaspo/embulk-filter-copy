@@ -10,64 +10,75 @@ The Document for Japanese is [here](http://qiita.com/Civitaspo/items/da8483c2881
 
 ## Configuration
 
-- **config**: another embulk configurations except `in`.
+- **copy**: Another embulk configurations except `in`. (array of `CopyEmbulkConfig`, optional)
+  - Either **copy** or **config** option is required.
+  - When **config** option is removed, this option become a required option.
+- **config**: [DEPRECATED: Use **copy** option] Another embulk configurations except `in`. (`CopyEmbulkConfig`, optional)
   - ref. http://www.embulk.org/docs/built-in.html#embulk-configuration-file-format
+
+### Configuration for `CopyEmbulkConfig`
+
+- **name**: The name of the bulk load to copy. (string, optional)
+- **exec**: The embulk executor plugin configuration. (config, optional)
+  - **max_threads**: The maximum number of threads for that the bulk load runs concurrently. (int, default: The number of available CPU cores)
+- **filters**: The embulk filter plugin configurations. (array of config, default: `[]`)
+- **out**: The embulk output plugin configuration.
+
 
 ## Example
 
 ```yaml
 filters:
   - type: copy
-    config:
-      filters:
-        - type: remove_columns
-          remove: ["id"]
-      out:
-        type: stdout
-      exec:
-        max_threads: 8
+    copy:
+      - name: copy-01
+        filters:
+          - type: remove_columns
+            remove: ["t"]
+        out:
+          type: stdout
+      - exec:
+          max_threads: 4
+        filters:
+          - type: remove_columns
+            remove: ["payload"]
+        out:
+          type: stdout
 ```
-
-## Note
-
-- This plugin works only on Java 1.8 or later.
-- This plugin is **experimental** yet, so the specification may be changed.
-- This plugin has more options than I write, but I do not write them because you do not have to change them currently.
-- This plugin has no test yet, so may have some bugs.
-- This plugin does not work on [embulk-executor-mapreduce](https://github.com/embulk/embulk-executor-mapreduce) yet.
-- This plugin uses lots of memory now, because embulk run twice.
-- Specification about error handling is not yet fixed.
-- If you have any problems or opinions, I'm glad if you raise Issue.
-
-## Dependencies
-- https://github.com/okumin/influent
-- https://github.com/komamitsu/fluency
-  - This plugin must use 1.1.0 for using the same msgpack version as embulk. 
 
 ## Development
 
-### Run example:
+### Run the example
 
 ```shell
-$ ./gradlew classpath
-$ embulk run example/config.yml -Ilib
+$ ./gradlew gem
+$ embulk run example/config.yml -Ibuild/gemContents/lib
 ```
 
-### Run test:
+### Run tests
 
 ```shell
-$ ./gradlew test
+$ ./gradlew scalatest
 ```
 
-### Release gem:
+### Build
+
+```
+$ ./gradlew gem --write-locks  # -t to watch change of files and rebuild continuously
+```
+
+### Release gem
 Fix [build.gradle](./build.gradle), then
 
 
 ```shell
 $ ./gradlew gemPush
-
 ```
 
-## ChangeLog
+## CHANGELOG
 
 [CHANGELOG.md](./CHANGELOG.md)
+
+## License
+
+[MIT LICENSE](./LICENSE)
