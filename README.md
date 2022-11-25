@@ -1,6 +1,6 @@
 # Copy filter plugin for Embulk
 
-[![Release CI Status Badge](https://github.com/civitaspo/embulk-filter-copy/workflows/Release%20CI/badge.svg)](https://github.com/civitaspo/embulk-filter-copy/actions?query=workflow%3A%22Release+CI%22) [![Test CI Status Badge](https://github.com/civitaspo/embulk-filter-copy/workflows/Test%20CI/badge.svg)](https://github.com/civitaspo/embulk-filter-copy/actions?query=workflow%3A%22Test+CI%22)
+[![Release CI Status Badge](https://github.com/civitaspo/embulk-filter-copy/workflows/Release%20CI/badge.svg)](https://github.com/civitaspo/embulk-filter-copy/actions?query=workflow%3A%22Release+CI%22)
 
 Copy records and run another embulk by using them as input data source.
 
